@@ -10,31 +10,24 @@ import {
 } from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
-function formatBibleContext(
-  data: {
-    characters: {
-      name: string;
-      role: string | null;
-      description?: string | null;
-      traits: string[] | null;
-    }[];
-    outline: {
-      title: string;
-      type: string | null;
-      content: string | null;
-      orderIndex: number | null;
-    }[];
-    worldEntries: {
-      title: string;
-      category: string | null;
-      content: string | null;
-    }[];
-    notes: { title: string; content: string | null }[];
-  },
-  genre?: string,
-): string {
+type RouteParams = { params: Promise<{ id: string }> };
+
+function formatBibleContext(data: {
+  characters: { name: string; role: string | null; traits: string[] | null }[];
+  outline: {
+    title: string;
+    type: string | null;
+    content: string | null;
+    orderIndex: number | null;
+  }[];
+  worldEntries: {
+    title: string;
+    category: string | null;
+    content: string | null;
+  }[];
+  notes: { title: string; content: string | null }[];
+}): string {
   const sections: string[] = [];
-  if (genre) sections.push(`GENRE: ${genre}`);
 
   if (data.characters.length > 0) {
     const chars = data.characters
@@ -73,18 +66,17 @@ function formatBibleContext(
     : "";
 }
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
+export async function GET(req: Request, { params }: RouteParams) {
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
+
   const [bible] = await db
     .select()
     .from(storyBibles)
-    .where(eq(storyBibles.documentId, params.id));
+    .where(eq(storyBibles.documentId, id));
 
   if (!bible) return NextResponse.json({ context: "" });
 

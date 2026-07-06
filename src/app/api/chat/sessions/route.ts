@@ -35,7 +35,12 @@ export async function POST(req: Request) {
 
   const [session] = await db
     .insert(chatSessions)
-    .values({ documentId, userId, title: title ?? "New Chat", messageCount: 0 })
+    .values({
+      documentId,
+      userId,
+      title: title ?? "New Chat",
+      messageCount: 0,
+    })
     .returning();
 
   return NextResponse.json(session);
