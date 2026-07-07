@@ -370,8 +370,9 @@ export default function ChatPanel({
                     <button
                       key={session.id}
                       onClick={() => {
-                        void loadSession(session.id);
-                        setView("chat");
+                        void loadSession(session.id).then(() =>
+                          setView("chat"),
+                        );
                       }}
                       style={{
                         width: "100%",

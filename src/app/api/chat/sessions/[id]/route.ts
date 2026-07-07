@@ -12,11 +12,15 @@ export async function GET(req: Request, { params }: RouteParams) {
 
   const { id } = await params;
 
+  console.log("Loading messages for session:", id); // ← add this
+
   const messages = await db
     .select()
     .from(chatMessages)
     .where(eq(chatMessages.sessionId, id))
     .orderBy(asc(chatMessages.createdAt));
+
+  console.log("Found messages:", messages.length); // ← and this
 
   return NextResponse.json(messages);
 }

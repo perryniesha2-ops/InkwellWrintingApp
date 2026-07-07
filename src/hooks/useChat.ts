@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 
 interface Message {
@@ -35,6 +35,7 @@ export function useChat(options: UseChatOptions) {
     !!options.documentId && !!user,
   );
 
+  // Load sessions
   useEffect(() => {
     if (!options.documentId || !user) return;
     fetch(`/api/chat/sessions?documentId=${options.documentId}`)
@@ -55,15 +56,18 @@ export function useChat(options: UseChatOptions) {
   const loadSession = useCallback(async (sessionId: string) => {
     setCurrentSessionId(sessionId);
     setMessages([]);
-    const data = (await fetch(`/api/chat/sessions/${sessionId}`).then((r) =>
-      r.json(),
-    )) as { role: string; content: string }[];
-    setMessages(
-      data.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-    );
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`);
+      const data = (await res.json()) as { role: string; content: string }[];
+      setMessages(
+        data.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      );
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
   }, []);
 
   const sendMessage = useCallback(
@@ -77,6 +81,9 @@ export function useChat(options: UseChatOptions) {
       setInput("");
       setLoading(true);
 
+      // Track session ID locally — state updates are async
+      let activeSessionId = currentSessionId;
+
       try {
         const currentContent = options.documentContentRef.current;
 
@@ -84,6 +91,7 @@ export function useChat(options: UseChatOptions) {
           "You are Inkwell, a warm but honest literary writing assistant.",
           "Celebrate what's working, flag what isn't. Be specific and kind.",
           "Never rewrite for the writer — guide them to find the answer themselves.",
+          "IMPORTANT: Use the Story Bible data to ensure consistency.",
           options.genre
             ? `The writer is working in the ${options.genre} genre.`
             : "",
@@ -95,23 +103,23 @@ export function useChat(options: UseChatOptions) {
           .filter(Boolean)
           .join("\n");
 
-        // Get or create session
-        let sessionId = currentSessionId;
-        if (!sessionId && options.documentId) {
-          const session = (await fetch("/api/chat/sessions", {
+        // Create session if needed
+        if (!activeSessionId && options.documentId) {
+          const sessionRes = await fetch("/api/chat/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               documentId: options.documentId,
               title: text.slice(0, 60),
             }),
-          }).then((r) => r.json())) as ChatSession;
-          sessionId = session.id;
-          setCurrentSessionId(session.id);
-          setSessions((prev) => [session, ...prev]);
+          });
+          const newSession = (await sessionRes.json()) as ChatSession;
+          activeSessionId = newSession.id;
+          setCurrentSessionId(newSession.id);
+          setSessions((prev) => [newSession, ...prev]);
         }
 
-        // Send to AI — only last 20 messages
+        // Send to AI — only last 20 messages to avoid token limits
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -122,36 +130,51 @@ export function useChat(options: UseChatOptions) {
         });
 
         if (!response.ok) throw new Error("Chat failed");
+
         const data = (await response.json()) as { content: string };
+        const assistantContent = data.content ?? "Something went wrong.";
         const assistantMessage: Message = {
           role: "assistant",
-          content: data.content,
+          content: assistantContent,
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Save messages
-        if (sessionId) {
-          await fetch(`/api/chat/sessions/${sessionId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: [
-                { role: "user", content: text },
-                { role: "assistant", content: data.content },
-              ],
-            }),
-          });
-          await fetch(`/api/chat/sessions/${sessionId}`, {
+        // Save messages to DB
+        if (activeSessionId) {
+          const saveRes = await fetch(
+            `/api/chat/sessions/${activeSessionId}/messages`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: [
+                  { role: "user", content: text },
+                  { role: "assistant", content: assistantContent },
+                ],
+              }),
+            },
+          );
+
+          if (!saveRes.ok) {
+            console.error("Failed to save messages:", await saveRes.text());
+          }
+
+          // Update session message count
+          await fetch(`/api/chat/sessions/${activeSessionId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messageCount: updatedMessages.length + 1 }),
+            body: JSON.stringify({
+              messageCount: updatedMessages.length + 1,
+            }),
           });
+
+          // Update local sessions list
           setSessions((prev) =>
             prev.map((s) =>
-              s.id === sessionId
+              s.id === activeSessionId
                 ? {
                     ...s,
-                    messageCount: s.messageCount + 2,
+                    messageCount: (s.messageCount ?? 0) + 2,
                     updatedAt: new Date().toISOString(),
                   }
                 : s,
