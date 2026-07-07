@@ -6,97 +6,136 @@ export async function POST(req: Request) {
   if (!userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { text, genre, chapterTitle, categories } = await req.json();
+  try {
+    const { text, genre, chapterTitle, categories } = await req.json();
 
-  if (!text)
-    return NextResponse.json({ error: "No text provided" }, { status: 400 });
+    if (!text)
+      return NextResponse.json({ error: "No text provided" }, { status: 400 });
 
-  const categoryInstructions: Record<string, string> = {
-    missing_word:
-      "MISSING WORDS — sentences where a word has been accidentally dropped",
-    repetition:
-      "WORD REPETITION — the same content word used 2+ times within 3 sentences",
-    awkward:
-      "AWKWARD PHRASING — sentences that sound unnatural or unclear when read aloud",
-    punctuation:
-      "PUNCTUATION — missing commas, dialogue missing closing punctuation",
-    tense:
-      "TENSE INCONSISTENCY — unintentional switches between past and present tense",
-    pronoun:
-      "UNCLEAR PRONOUNS — he/she/it/they that could refer to more than one person",
-    spacing: "SPACING — double spaces, missing spaces after punctuation",
-  };
+    const categoryInstructions: Record<string, string> = {
+      missing_word:
+        "MISSING WORDS — sentences where a word has been accidentally dropped",
+      repetition:
+        "WORD REPETITION — the same content word used 2+ times within 3 sentences",
+      awkward:
+        "AWKWARD PHRASING — sentences that sound unnatural or unclear when read aloud",
+      punctuation:
+        "PUNCTUATION — missing commas, dialogue missing closing punctuation",
+      tense:
+        "TENSE INCONSISTENCY — unintentional switches between past and present tense",
+      pronoun:
+        "UNCLEAR PRONOUNS — he/she/it/they that could refer to more than one person",
+      spacing: "SPACING — double spaces, missing spaces after punctuation",
+    };
 
-  const selectedInstructions = (
-    (categories as string[]) ?? Object.keys(categoryInstructions)
-  )
-    .map((id: string) => categoryInstructions[id])
-    .filter(Boolean)
-    .map((inst: string, i: number) => `${i + 1}. ${inst}`)
-    .join("\n");
+    const selectedInstructions = (
+      (categories as string[]) ?? Object.keys(categoryInstructions)
+    )
+      .map((id: string) => categoryInstructions[id])
+      .filter(Boolean)
+      .map((inst: string, i: number) => `${i + 1}. ${inst}`)
+      .join("\n");
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: `You are an expert literary proofreader working on ${genre ?? "fiction"}.
+    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: `You are an expert literary proofreader working on ${genre ?? "fiction"}.
 
 Check ONLY for these specific issues:
 ${selectedInstructions}
 
-For each issue include the EXACT verbatim text from the chapter (10-20 words max).
+CRITICAL JSON RULES:
+- Return ONLY a valid JSON object, no markdown, no backticks
+- Every string value must be on a single line — NO newlines inside strings
+- Use a space instead of a newline if you need to break text
 
-Respond with ONLY valid JSON:
+Respond in this exact format:
 {
   "issues": [
     {
       "type": "missing_word|repetition|awkward|punctuation|tense|pronoun|spacing",
       "severity": "error|warning|suggestion",
-      "quote": "exact verbatim text",
-      "explanation": "what is wrong",
-      "suggestion": "corrected version",
-      "impact": "why this matters"
+      "quote": "exact verbatim text on one line",
+      "explanation": "what is wrong on one line",
+      "suggestion": "corrected version on one line",
+      "impact": "why this matters on one line"
     }
   ],
-  "summary": "2 sentence assessment",
+  "summary": "2 sentence assessment on one line",
   "score": 0-100,
   "strengths": ["one strength", "another"]
 }
 
-Limit to 15 issues. Return ONLY the JSON object.`,
-      messages: [
-        {
-          role: "user",
-          content: `Proofread this chapter.\n\nChapter: ${chapterTitle ?? "Unknown"}\n\n${text}`,
-        },
-      ],
-    }),
-  });
+Limit to 15 issues. Return ONLY the JSON object, nothing else.`,
+        messages: [
+          {
+            role: "user",
+            content: `Proofread this chapter.\n\nChapter: ${chapterTitle ?? "Unknown"}\n\n${text}`,
+          },
+        ],
+      }),
+    });
 
-  if (!response.ok) {
-    return NextResponse.json({ error: "AI service error" }, { status: 502 });
-  }
+    if (!anthropicRes.ok) {
+      const errText = await anthropicRes.text();
+      console.error("Anthropic API error:", anthropicRes.status, errText);
+      return NextResponse.json(
+        { error: `Anthropic API error: ${anthropicRes.status}` },
+        { status: 502 },
+      );
+    }
 
-  const data = await response.json();
-  const rawText = data.content?.[0]?.text ?? "{}";
-  const stripped = rawText
-    .replace(/```json\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-  const jsonMatch = stripped.match(/\{[\s\S]*\}/);
-  const jsonStr = jsonMatch ? jsonMatch[0] : stripped;
+    const data = await anthropicRes.json();
+    const rawText = data.content?.[0]?.text ?? "{}";
 
-  try {
-    return NextResponse.json(JSON.parse(jsonStr));
-  } catch {
+    console.log("Raw response:", rawText.slice(0, 200));
+
+    const stripped = rawText
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    // Fix unescaped newlines inside JSON string values
+    const sanitized = stripped.replace(
+      /:\s*"([^"]*)"/g,
+      (match: string, p1: string) => {
+        const cleaned = p1
+          .replace(/\n/g, " ")
+          .replace(/\r/g, "")
+          .replace(/\t/g, " ");
+        return `: "${cleaned}"`;
+      },
+    );
+
+    const jsonMatch = sanitized.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : sanitized;
+
+    try {
+      const result = JSON.parse(jsonStr);
+      return NextResponse.json(result);
+    } catch (parseErr) {
+      console.error(
+        "JSON parse error:",
+        parseErr,
+        "Raw:",
+        rawText.slice(0, 300),
+      );
+      return NextResponse.json(
+        { error: "Failed to parse AI response" },
+        { status: 500 },
+      );
+    }
+  } catch (err) {
+    console.error("Grammar check error:", err);
     return NextResponse.json(
-      { error: "Failed to parse response" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
