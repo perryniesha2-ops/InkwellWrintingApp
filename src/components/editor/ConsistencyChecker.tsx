@@ -1,4 +1,4 @@
-"use client;";
+"use client";
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -107,7 +107,7 @@ function ScoreRing({ score }: { score: number }) {
       <div style={{ position: "absolute", textAlign: "center" }}>
         <span
           style={{
-            fontFamily: "DM Sans",
+            fontFamily: "var(--font-dm-sans)",
             fontWeight: 800,
             fontSize: "22px",
             color,
@@ -119,7 +119,7 @@ function ScoreRing({ score }: { score: number }) {
           style={{
             display: "block",
             fontSize: "10px",
-            fontFamily: "Inter",
+            fontFamily: "var(--font-inter)",
             color: "var(--text-dim)",
           }}
         >
@@ -168,7 +168,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
             <span
               style={{
                 fontSize: "11px",
-                fontFamily: "DM Sans",
+                fontFamily: "var(--font-dm-sans)",
                 fontWeight: 700,
                 color: "var(--text-primary)",
               }}
@@ -178,7 +178,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
             <span
               style={{
                 fontSize: "9px",
-                fontFamily: "Inter",
+                fontFamily: "var(--font-inter)",
                 fontWeight: 600,
                 letterSpacing: "0.06em",
                 padding: "2px 6px",
@@ -193,7 +193,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
             <p
               style={{
                 fontSize: "11px",
-                fontFamily: "Inter",
+                fontFamily: "var(--font-inter)",
                 color: "var(--text-muted)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -211,7 +211,6 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
               height: "13px",
               color: "var(--text-muted)",
               flexShrink: 0,
-              marginTop: "2px",
             }}
           />
         ) : (
@@ -221,7 +220,6 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
               height: "13px",
               color: "var(--text-muted)",
               flexShrink: 0,
-              marginTop: "2px",
             }}
           />
         )}
@@ -253,7 +251,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                   <p
                     style={{
                       fontSize: "10px",
-                      fontFamily: "Inter",
+                      fontFamily: "var(--font-inter)",
                       fontWeight: 600,
                       letterSpacing: "0.08em",
                       textTransform: "uppercase",
@@ -266,7 +264,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                   <p
                     style={{
                       fontSize: "12px",
-                      fontFamily: "Inter",
+                      fontFamily: "var(--font-inter)",
                       color: "var(--text-primary)",
                       lineHeight: 1.6,
                     }}
@@ -279,7 +277,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                     <p
                       style={{
                         fontSize: "10px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         fontWeight: 600,
                         letterSpacing: "0.08em",
                         textTransform: "uppercase",
@@ -291,7 +289,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                     </p>
                     <p
                       style={{
-                        fontFamily: "Cormorant Garamond, Georgia, serif",
+                        fontFamily: "var(--font-cormorant)",
                         fontSize: "13px",
                         fontStyle: "italic",
                         padding: "8px 10px",
@@ -309,7 +307,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                     <p
                       style={{
                         fontSize: "10px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         fontWeight: 600,
                         letterSpacing: "0.08em",
                         textTransform: "uppercase",
@@ -322,7 +320,7 @@ function IssueCard({ issue }: { issue: ConsistencyIssue }) {
                     <p
                       style={{
                         fontSize: "12px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         color: "var(--text-primary)",
                         lineHeight: 1.6,
                       }}
@@ -436,7 +434,7 @@ export default function ConsistencyChecker({
               />
               <span
                 style={{
-                  fontFamily: "DM Sans",
+                  fontFamily: "var(--font-dm-sans)",
                   fontWeight: 700,
                   fontSize: "13px",
                   color: "var(--text-primary)",
@@ -495,7 +493,7 @@ export default function ConsistencyChecker({
                 </div>
                 <h3
                   style={{
-                    fontFamily: "DM Sans",
+                    fontFamily: "var(--font-dm-sans)",
                     fontWeight: 700,
                     fontSize: "16px",
                     color: "var(--text-primary)",
@@ -507,7 +505,7 @@ export default function ConsistencyChecker({
                 <p
                   style={{
                     fontSize: "13px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     fontStyle: "italic",
                     color: "var(--text-muted)",
                     marginBottom: "1.5rem",
@@ -527,7 +525,7 @@ export default function ConsistencyChecker({
                     border: "none",
                     cursor: "pointer",
                     fontSize: "13px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     fontWeight: 600,
                     display: "inline-flex",
                     alignItems: "center",
@@ -541,7 +539,7 @@ export default function ConsistencyChecker({
                   <p
                     style={{
                       fontSize: "11px",
-                      fontFamily: "Inter",
+                      fontFamily: "var(--font-inter)",
                       color: "var(--text-dim)",
                       marginTop: "12px",
                       fontStyle: "italic",
@@ -568,7 +566,7 @@ export default function ConsistencyChecker({
                 <p
                   style={{
                     fontSize: "13px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     fontStyle: "italic",
                     color: "var(--text-muted)",
                     marginBottom: "4px",
@@ -579,7 +577,7 @@ export default function ConsistencyChecker({
                 <p
                   style={{
                     fontSize: "11px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     color: "var(--text-dim)",
                   }}
                 >
@@ -597,7 +595,7 @@ export default function ConsistencyChecker({
                   border: "1px solid rgba(239,68,68,0.2)",
                   color: "#f87171",
                   fontSize: "12px",
-                  fontFamily: "Inter",
+                  fontFamily: "var(--font-inter)",
                   marginBottom: "12px",
                 }}
               >
@@ -615,7 +613,7 @@ export default function ConsistencyChecker({
                     border: "none",
                     cursor: "pointer",
                     fontSize: "12px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     fontWeight: 600,
                   }}
                 >
@@ -643,7 +641,7 @@ export default function ConsistencyChecker({
                   <div style={{ flex: 1 }}>
                     <p
                       style={{
-                        fontFamily: "DM Sans",
+                        fontFamily: "var(--font-dm-sans)",
                         fontWeight: 700,
                         fontSize: "14px",
                         color: "var(--text-primary)",
@@ -659,7 +657,7 @@ export default function ConsistencyChecker({
                     <p
                       style={{
                         fontSize: "11px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         color: "var(--text-muted)",
                         lineHeight: 1.5,
                         marginBottom: "8px",
@@ -673,7 +671,7 @@ export default function ConsistencyChecker({
                           <span
                             style={{
                               fontSize: "10px",
-                              fontFamily: "Inter",
+                              fontFamily: "var(--font-inter)",
                               fontWeight: 600,
                               color: "#ef4444",
                             }}
@@ -685,7 +683,7 @@ export default function ConsistencyChecker({
                           <span
                             style={{
                               fontSize: "10px",
-                              fontFamily: "Inter",
+                              fontFamily: "var(--font-inter)",
                               fontWeight: 600,
                               color: "#f59e0b",
                             }}
@@ -697,7 +695,7 @@ export default function ConsistencyChecker({
                           <span
                             style={{
                               fontSize: "10px",
-                              fontFamily: "Inter",
+                              fontFamily: "var(--font-inter)",
                               fontWeight: 600,
                               color: "#60a5fa",
                             }}
@@ -723,7 +721,7 @@ export default function ConsistencyChecker({
                     />
                     <p
                       style={{
-                        fontFamily: "DM Sans",
+                        fontFamily: "var(--font-dm-sans)",
                         fontWeight: 700,
                         fontSize: "14px",
                         color: "var(--text-primary)",
@@ -735,7 +733,7 @@ export default function ConsistencyChecker({
                     <p
                       style={{
                         fontSize: "11px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         color: "var(--text-muted)",
                       }}
                     >
@@ -750,7 +748,7 @@ export default function ConsistencyChecker({
                     <p
                       style={{
                         fontSize: "10px",
-                        fontFamily: "Inter",
+                        fontFamily: "var(--font-inter)",
                         fontWeight: 600,
                         letterSpacing: "0.1em",
                         textTransform: "uppercase",
@@ -782,7 +780,7 @@ export default function ConsistencyChecker({
                     border: "1px solid var(--border-color)",
                     color: "var(--text-muted)",
                     fontSize: "12px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     cursor: "pointer",
                     transition: "all 0.15s",
                   }}

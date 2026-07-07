@@ -1,16 +1,10 @@
-"use client;";
+"use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  BarChart2,
-  X,
-  BookOpen,
-  Clock,
-  MessageSquare,
-  Activity,
-} from "lucide-react";
+import { BarChart2, X, Loader2, RefreshCw } from "lucide-react";
 import { analyzeReadability } from "@/lib/readability";
+import type { ReadabilityStats } from "@/lib/readability";
 
 interface ReadabilityPanelProps {
   content: string;
@@ -29,197 +23,242 @@ function StatCard({
 }) {
   return (
     <div
-      className="rounded-lg p-3 text-center"
       style={{
-        background: "rgba(184, 120, 50, 0.06)",
-        border: "1px solid rgba(184, 120, 50, 0.15)",
+        padding: "16px",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-color)",
+        textAlign: "center",
       }}
     >
-      <div className="font-display text-xl text-ink-800">{value}</div>
-      <div className="text-xs font-sans text-sepia-500 mt-0.5">{label}</div>
-      {sub && (
-        <div className="text-xs font-sans text-sepia-300 mt-0.5">{sub}</div>
-      )}
-    </div>
-  );
-}
-
-function ScoreBar({
-  label,
-  value,
-  max = 100,
-  color,
-  description,
-}: {
-  label: string;
-  value: number;
-  max?: number;
-  color: string;
-  description?: string;
-}) {
-  const pct = Math.min(100, (value / max) * 100);
-  return (
-    <div className="mb-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-sans text-sepia-600">{label}</span>
-        <span className="text-xs font-sans font-medium text-ink-700">
-          {value}
-          {max !== 100 ? `/${max}` : "%"}
-        </span>
+      <div
+        style={{
+          fontFamily: "var(--font-dm-sans)",
+          fontWeight: 800,
+          fontSize: "1.75rem",
+          letterSpacing: "-0.03em",
+          color: "var(--text-primary)",
+          lineHeight: 1,
+          marginBottom: "4px",
+        }}
+      >
+        {value}
       </div>
       <div
-        className="h-1.5 rounded-full overflow-hidden"
-        style={{ background: "rgba(184, 120, 50, 0.12)" }}
+        style={{
+          fontSize: "11px",
+          fontFamily: "var(--font-inter)",
+          color: "var(--text-muted)",
+          fontWeight: 500,
+        }}
       >
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="h-full rounded-full"
-          style={{ background: color }}
-        />
+        {label}
       </div>
-      {description && (
-        <p className="text-xs font-sans text-sepia-400 mt-0.5">{description}</p>
+      {sub && (
+        <div
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-inter)",
+            color: "var(--text-dim)",
+            marginTop: "2px",
+          }}
+        >
+          {sub}
+        </div>
       )}
     </div>
   );
 }
 
-function SentenceVarietyBar({
-  short,
-  medium,
-  long,
-}: {
-  short: number;
-  medium: number;
-  long: number;
-}) {
-  const total = short + medium + long;
-  if (total === 0) return null;
-  const shortPct = (short / total) * 100;
-  const medPct = (medium / total) * 100;
-  const longPct = (long / total) * 100;
+function ScoreBar({ score, label }: { score: number; label: string }) {
+  const color = score >= 70 ? "#22c55e" : score >= 50 ? "#f59e0b" : "#ef4444";
+  const readability = score >= 70 ? "Easy" : score >= 50 ? "Moderate" : "Hard";
 
   return (
-    <div className="mb-4">
-      <p className="text-xs font-sans text-sepia-500 uppercase tracking-wider mb-2">
-        Sentence Length Variety
-      </p>
-      <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${shortPct}%` }}
-          transition={{ duration: 0.6 }}
-          className="h-full rounded-l-full"
-          style={{ background: "#22c55e" }}
-          title={`Short: ${short}`}
-        />
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${medPct}%` }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="h-full"
-          style={{ background: "var(--gold-accent)" }}
-          title={`Medium: ${medium}`}
-        />
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${longPct}%` }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="h-full rounded-r-full"
-          style={{ background: "#ef4444" }}
-          title={`Long: ${long}`}
-        />
-      </div>
-      <div className="flex items-center gap-3 mt-1.5">
-        <span className="flex items-center gap-1 text-xs font-sans text-sepia-400">
-          <span
-            className="w-2 h-2 rounded-full inline-block"
-            style={{ background: "#22c55e" }}
-          />
-          Short {Math.round(shortPct)}%
-        </span>
-        <span className="flex items-center gap-1 text-xs font-sans text-sepia-400">
-          <span
-            className="w-2 h-2 rounded-full inline-block"
-            style={{ background: "var(--gold-accent)" }}
-          />
-          Medium {Math.round(medPct)}%
-        </span>
-        <span className="flex items-center gap-1 text-xs font-sans text-sepia-400">
-          <span
-            className="w-2 h-2 rounded-full inline-block"
-            style={{ background: "#ef4444" }}
-          />
-          Long {Math.round(longPct)}%
-        </span>
-      </div>
-      <p className="text-xs font-sans text-sepia-400 mt-1 italic">
-        {shortPct > 60
-          ? "Too many short sentences — vary your rhythm."
-          : longPct > 40
-            ? "Many long sentences — consider breaking some up."
-            : "Good sentence variety."}
-      </p>
-    </div>
-  );
-}
-
-function FleschGauge({ score }: { score: number }) {
-  const color =
-    score >= 70 ? "#22c55e" : score >= 50 ? "var(--gold-accent)" : "#ef4444";
-  const label =
-    score >= 90
-      ? "Very Easy"
-      : score >= 80
-        ? "Easy"
-        : score >= 70
-          ? "Fairly Easy"
-          : score >= 60
-            ? "Standard"
-            : score >= 50
-              ? "Fairly Difficult"
-              : score >= 30
-                ? "Difficult"
-                : "Very Difficult";
-
-  return (
-    <div className="card-parchment p-4 mb-4">
-      <div className="flex items-center justify-between mb-2">
+    <div
+      style={{
+        padding: "16px",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-color)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "8px",
+        }}
+      >
         <div>
-          <p className="font-display text-base text-ink-800">
-            Readability Score
+          <p
+            style={{
+              fontSize: "13px",
+              fontFamily: "var(--font-inter)",
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              margin: 0,
+            }}
+          >
+            {label}
           </p>
-          <p className="text-xs font-sans text-sepia-400">
+          <p
+            style={{
+              fontSize: "11px",
+              fontFamily: "var(--font-inter)",
+              color: "var(--text-muted)",
+              margin: 0,
+            }}
+          >
             Flesch Reading Ease
           </p>
         </div>
-        <div className="text-right">
-          <p className="font-display text-3xl" style={{ color }}>
+        <div style={{ textAlign: "right" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-dm-sans)",
+              fontWeight: 800,
+              fontSize: "2rem",
+              color,
+              lineHeight: 1,
+            }}
+          >
             {score}
-          </p>
-          <p className="text-xs font-sans" style={{ color }}>
-            {label}
+          </span>
+          <p
+            style={{
+              fontSize: "11px",
+              fontFamily: "var(--font-inter)",
+              color,
+              margin: 0,
+              fontWeight: 600,
+            }}
+          >
+            {readability}
           </p>
         </div>
       </div>
       <div
-        className="h-2 rounded-full overflow-hidden"
-        style={{ background: "rgba(184, 120, 50, 0.12)" }}
+        style={{
+          height: "4px",
+          background: "var(--border-color)",
+          borderRadius: "2px",
+          overflow: "hidden",
+        }}
       >
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: `${score}%` }}
+          animate={{ width: `${Math.min(score, 100)}%` }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="h-full rounded-full"
-          style={{ background: color }}
+          style={{ height: "100%", background: color, borderRadius: "2px" }}
         />
       </div>
-      <div className="flex justify-between text-xs font-sans text-sepia-300 mt-1">
-        <span>Hard</span>
-        <span>Easy</span>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: "4px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-inter)",
+            color: "var(--text-dim)",
+          }}
+        >
+          Hard
+        </span>
+        <span
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-inter)",
+            color: "var(--text-dim)",
+          }}
+        >
+          Easy
+        </span>
       </div>
+    </div>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+  bar,
+  barColor,
+  note,
+}: {
+  label: string;
+  value: string;
+  bar?: number;
+  barColor?: string;
+  note?: string;
+}) {
+  return (
+    <div style={{ marginBottom: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "4px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "12px",
+            fontFamily: "var(--font-inter)",
+            color: "var(--text-muted)",
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: "12px",
+            fontFamily: "var(--font-inter)",
+            fontWeight: 600,
+            color: barColor ?? "var(--text-primary)",
+          }}
+        >
+          {value}
+        </span>
+      </div>
+      {bar !== undefined && (
+        <div
+          style={{
+            height: "3px",
+            background: "var(--border-color)",
+            borderRadius: "2px",
+            overflow: "hidden",
+          }}
+        >
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(bar, 100)}%` }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            style={{
+              height: "100%",
+              background: barColor ?? "var(--gold-primary)",
+              borderRadius: "2px",
+            }}
+          />
+        </div>
+      )}
+      {note && (
+        <p
+          style={{
+            fontSize: "10px",
+            fontFamily: "var(--font-inter)",
+            fontStyle: "italic",
+            color: "var(--text-dim)",
+            marginTop: "3px",
+          }}
+        >
+          {note}
+        </p>
+      )}
     </div>
   );
 }
@@ -229,7 +268,31 @@ export default function ReadabilityPanel({
   isOpen,
   onClose,
 }: ReadabilityPanelProps) {
-  const stats = useMemo(() => analyzeReadability(content), [content]);
+  const [stats, setStats] = useState<ReadabilityStats | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const analyze = useCallback(() => {
+    if (!content || typeof window === "undefined") return;
+
+    setTimeout(() => {
+      setLoading(true);
+      try {
+        const result = analyzeReadability(content);
+        setStats(result);
+      } catch (err) {
+        console.error("Readability error:", err);
+      } finally {
+        setLoading(false);
+      }
+    }, 0);
+  }, [content]);
+
+  useEffect(() => {
+    if (isOpen && content) analyze();
+  }, [isOpen, analyze, content]);
+
+  const sentLengthColor = (pct: number) =>
+    pct > 20 ? "#ef4444" : pct > 10 ? "#f59e0b" : "#22c55e";
 
   return (
     <AnimatePresence>
@@ -239,215 +302,583 @@ export default function ReadabilityPanel({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 320 }}
           transition={{ type: "spring", damping: 28, stiffness: 280 }}
-          className="fixed right-0 top-0 bottom-0 w-80 xl:w-96 flex flex-col z-40 shadow-2xl"
           style={{
-            background: "hsl(var(--card))",
-            borderLeft: "1px solid hsl(var(--border))",
+            position: "fixed",
+            right: 0,
+            top: "48px", // ← starts below the topbar
+            bottom: 0,
+            width: "320px",
+            display: "flex",
+            flexDirection: "column",
+            zIndex: 40,
+            background: "var(--bg-surface)",
+            borderLeft: "1px solid var(--border-color)",
           }}
         >
           {/* Header */}
           <div
-            className="flex items-center justify-between px-4 py-3.5 flex-shrink-0"
-            style={{ borderBottom: "1px solid hsl(var(--border))" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 16px",
+              height: "48px",
+              flexShrink: 0,
+              borderBottom: "1px solid var(--border-color)",
+            }}
           >
-            <div className="flex items-center gap-2">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <BarChart2
-                className="w-4 h-4"
-                style={{ color: "var(--gold-accent)" }}
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--gold-primary)",
+                }}
               />
-              <span className="font-display text-base text-ink-800">
+              <span
+                style={{
+                  fontFamily: "var(--font-dm-sans)",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  color: "var(--text-primary)",
+                  letterSpacing: "-0.01em",
+                }}
+              >
                 Readability
               </span>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-md hover:bg-parchment-200 transition-colors"
-            >
-              <X className="w-4 h-4 text-sepia-400" />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                onClick={analyze}
+                disabled={loading}
+                style={{
+                  color: "var(--text-muted)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  padding: "4px",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color =
+                    "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color =
+                    "var(--text-muted)";
+                }}
+              >
+                <RefreshCw
+                  style={{ width: "13px", height: "13px" }}
+                  className={loading ? "animate-spin" : ""}
+                />
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  color: "var(--text-muted)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  padding: "4px",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color =
+                    "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color =
+                    "var(--text-muted)";
+                }}
+              >
+                <X style={{ width: "14px", height: "14px" }} />
+              </button>
+            </div>
           </div>
 
-          {stats.wordCount === 0 ? (
-            <div className="flex-1 flex items-center justify-center p-6 text-center">
-              <div>
-                <BarChart2
-                  className="w-10 h-10 mx-auto mb-3 opacity-30"
-                  style={{ color: "var(--gold-accent)" }}
-                />
-                <p className="font-serif text-sm italic text-sepia-400">
-                  Start writing to see readability analysis.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Quick stats */}
-              <div className="grid grid-cols-2 gap-2">
-                <StatCard
-                  label="Words"
-                  value={stats.wordCount.toLocaleString()}
-                />
-                <StatCard label="Reading Time" value={stats.readingTime} />
-                <StatCard
-                  label="Sentences"
-                  value={stats.sentenceCount.toLocaleString()}
-                />
-                <StatCard
-                  label="Paragraphs"
-                  value={stats.paragraphCount.toLocaleString()}
-                />
-              </div>
-
-              {/* Flesch score */}
-              <FleschGauge score={stats.fleschReadingEase} />
-
-              {/* Grade level */}
-              <div className="card-parchment p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-sepia-400" />
-                  <div>
-                    <p className="text-xs font-sans text-sepia-500">
-                      Grade Level
-                    </p>
-                    <p className="text-sm font-sans font-medium text-ink-700">
-                      Grade {stats.fleschKincaidGrade}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-sepia-400" />
-                  <div>
-                    <p className="text-xs font-sans text-sepia-500">
-                      Avg Sentence
-                    </p>
-                    <p className="text-sm font-sans font-medium text-ink-700">
-                      {stats.avgWordsPerSentence} words
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sentence variety */}
-              <div className="card-parchment p-3">
-                <SentenceVarietyBar
-                  short={stats.shortSentences}
-                  medium={stats.mediumSentences}
-                  long={stats.longSentences}
+          {/* Content */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+            }}
+          >
+            {loading && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "4rem",
+                }}
+              >
+                <Loader2
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    color: "var(--gold-primary)",
+                  }}
+                  className="animate-spin"
                 />
               </div>
+            )}
 
-              {/* Style metrics */}
-              <div className="card-parchment p-3">
-                <p className="text-xs font-sans text-sepia-500 uppercase tracking-wider mb-3">
-                  Style Metrics
-                </p>
-                <ScoreBar
-                  label="Passive Voice"
-                  value={stats.passiveVoicePercent}
-                  color={
-                    stats.passiveVoicePercent > 20
-                      ? "#ef4444"
-                      : stats.passiveVoicePercent > 10
-                        ? "#f59e0b"
-                        : "#22c55e"
-                  }
-                  description={
-                    stats.passiveVoicePercent > 20
-                      ? "High — consider using active voice more"
-                      : stats.passiveVoicePercent > 10
-                        ? "Moderate passive voice"
-                        : "Good — mostly active voice"
-                  }
-                />
-                <ScoreBar
-                  label="Dialogue"
-                  value={stats.dialoguePercent}
-                  color="var(--gold-accent)"
-                  description={
-                    stats.dialoguePercent > 60
-                      ? "Dialogue-heavy"
-                      : stats.dialoguePercent < 10
-                        ? "Very little dialogue"
-                        : "Good balance"
-                  }
-                />
+            {stats && !loading && (
+              <>
+                {/* Stat cards */}
                 <div
-                  className="flex items-center justify-between py-2"
-                  style={{ borderBottom: "1px solid hsl(var(--border))" }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "8px",
+                  }}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-sepia-400" />
-                    <span className="text-xs font-sans text-sepia-600">
-                      Adverbs (-ly words)
-                    </span>
-                  </div>
-                  <span
-                    className="text-xs font-sans font-medium text-ink-700"
+                  <StatCard
+                    label="Words"
+                    value={stats.wordCount.toLocaleString()}
+                  />
+                  <StatCard
+                    label="Reading Time"
+                    value={`${stats.readingTime} min`}
+                  />
+                  <StatCard
+                    label="Sentences"
+                    value={stats.sentenceCount.toLocaleString()}
+                  />
+                  <StatCard
+                    label="Paragraphs"
+                    value={stats.paragraphCount.toLocaleString()}
+                  />
+                </div>
+
+                {/* Flesch score */}
+                <ScoreBar score={stats.fleschScore} label="Readability Score" />
+
+                {/* Grade & avg sentence */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
+                  <div
                     style={{
-                      color: stats.adverbCount > 20 ? "#ef4444" : "#2a1c06",
+                      padding: "12px",
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-color)",
                     }}
                   >
-                    {stats.adverbCount}
-                    {stats.adverbCount > 20 ? " — consider reducing" : ""}
-                  </span>
-                </div>
-              </div>
-
-              {/* Overused words */}
-              {stats.overusedWords.length > 0 && (
-                <div className="card-parchment p-3">
-                  <p className="text-xs font-sans text-sepia-500 uppercase tracking-wider mb-2">
-                    Most Used Words
-                  </p>
-                  <div className="space-y-1.5">
-                    {stats.overusedWords.map(({ word, count }) => (
-                      <div key={word} className="flex items-center gap-2">
-                        <div
-                          className="flex-1 h-1.5 rounded-full overflow-hidden"
-                          style={{
-                            background: "hsl(var(--accent) / 0.2)",
-                            border: "1px solid hsl(var(--border))",
-                          }}
-                        >
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.min(100, (count / stats.overusedWords[0].count) * 100)}%`,
-                              background:
-                                count > 10 ? "#ef4444" : "var(--gold-accent)",
-                            }}
-                          />
-                        </div>
-                        <span className="text-xs font-sans text-ink-700 w-20 truncate">
-                          {word}
-                        </span>
-                        <span className="text-xs font-sans text-sepia-400 w-6 text-right">
-                          {count}×
-                        </span>
-                      </div>
-                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-inter)",
+                          color: "var(--text-dim)",
+                        }}
+                      >
+                        Grade Level
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-dm-sans)",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "var(--text-primary)",
+                        margin: 0,
+                      }}
+                    >
+                      Grade {stats.gradeLevel.toFixed(1)}
+                    </p>
                   </div>
-                  <p className="text-xs font-sans text-sepia-400 mt-2 italic">
-                    Words appearing 3+ times, excluding common words.
-                  </p>
+                  <div
+                    style={{
+                      padding: "12px",
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-color)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-inter)",
+                          color: "var(--text-dim)",
+                        }}
+                      >
+                        Avg Sentence
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-dm-sans)",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "var(--text-primary)",
+                        margin: 0,
+                      }}
+                    >
+                      {stats.avgSentenceLength.toFixed(1)} words
+                    </p>
+                  </div>
                 </div>
-              )}
 
-              {/* Dialogue indicator */}
-              <div className="card-parchment p-3 flex items-center gap-3">
-                <MessageSquare className="w-4 h-4 text-sepia-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-xs font-sans text-sepia-500">
-                    Dialogue vs Prose
+                {/* Font size note */}
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-inter)",
+                        fontWeight: 600,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      Avg Word Length
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        fontFamily: "var(--font-inter)",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        marginLeft: "auto",
+                      }}
+                    >
+                      {stats.avgWordLength.toFixed(1)} chars
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: "3px",
+                      background: "var(--border-color)",
+                      marginTop: "8px",
+                      borderRadius: "2px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{
+                        width: `${Math.min((stats.avgWordLength / 8) * 100, 100)}%`,
+                      }}
+                      transition={{ duration: 0.6 }}
+                      style={{
+                        height: "100%",
+                        background: "var(--gold-primary)",
+                        borderRadius: "2px",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Sentence length variety */}
+                <div
+                  style={{
+                    padding: "14px",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "10px",
+                      fontFamily: "var(--font-inter)",
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "var(--text-dim)",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Sentence Length Variety
                   </p>
-                  <p className="text-sm font-sans text-ink-700">
-                    {stats.dialoguePercent}% dialogue ·{" "}
-                    {100 - stats.dialoguePercent}% prose
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "4px",
+                      height: "8px",
+                      borderRadius: "4px",
+                      overflow: "hidden",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${stats.sentenceLengthVariety.short}%`,
+                        background: "#22c55e",
+                      }}
+                    />
+                    <div
+                      style={{
+                        width: `${stats.sentenceLengthVariety.medium}%`,
+                        background: "var(--gold-primary)",
+                      }}
+                    />
+                    <div
+                      style={{
+                        width: `${stats.sentenceLengthVariety.long}%`,
+                        background: sentLengthColor(
+                          stats.sentenceLengthVariety.long,
+                        ),
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-inter)",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: "#22c55e",
+                          display: "inline-block",
+                        }}
+                      />
+                      Short {stats.sentenceLengthVariety.short}%
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-inter)",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: "var(--gold-primary)",
+                          display: "inline-block",
+                        }}
+                      />
+                      Medium {stats.sentenceLengthVariety.medium}%
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-inter)",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: sentLengthColor(
+                            stats.sentenceLengthVariety.long,
+                          ),
+                          display: "inline-block",
+                        }}
+                      />
+                      Long {stats.sentenceLengthVariety.long}%
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      fontFamily: "var(--font-inter)",
+                      fontStyle: "italic",
+                      color: "var(--text-muted)",
+                      marginTop: "6px",
+                    }}
+                  >
+                    {stats.sentenceLengthVariety.long > 20
+                      ? "Too many long sentences — vary your rhythm"
+                      : stats.sentenceLengthVariety.short > 50
+                        ? "Many short sentences — add some longer ones"
+                        : "Good sentence variety."}
                   </p>
                 </div>
+
+                {/* Style metrics */}
+                <div
+                  style={{
+                    padding: "14px",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "10px",
+                      fontFamily: "var(--font-inter)",
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "var(--text-dim)",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Style Metrics
+                  </p>
+
+                  <MetricRow
+                    label="Passive Voice"
+                    value={`${stats.passiveVoicePercent}%`}
+                    bar={stats.passiveVoicePercent}
+                    barColor={
+                      stats.passiveVoicePercent > 15 ? "#ef4444" : "#22c55e"
+                    }
+                    note={
+                      stats.passiveVoicePercent > 15
+                        ? "High — consider active voice"
+                        : "Good — mostly active voice"
+                    }
+                  />
+
+                  <MetricRow
+                    label="Dialogue"
+                    value={`${stats.dialoguePercent}%`}
+                    bar={stats.dialoguePercent}
+                    barColor="var(--gold-primary)"
+                    note={
+                      stats.dialoguePercent < 10
+                        ? "Low — consider adding more dialogue"
+                        : "Good balance"
+                    }
+                  />
+
+                  <MetricRow
+                    label="Adverbs (-ly words)"
+                    value={stats.adverbCount.toLocaleString()}
+                    barColor={
+                      stats.adverbCount > 100
+                        ? "#ef4444"
+                        : "var(--gold-primary)"
+                    }
+                    note={
+                      stats.adverbCount > 100
+                        ? `${stats.adverbCount} — consider reducing`
+                        : "Good — not overusing adverbs"
+                    }
+                  />
+
+                  <MetricRow
+                    label="Unique Words"
+                    value={`${stats.uniqueWordPercent}%`}
+                    bar={stats.uniqueWordPercent}
+                    barColor="var(--gold-primary)"
+                    note={
+                      stats.uniqueWordPercent < 40
+                        ? "Low vocabulary variety"
+                        : "Good vocabulary variety"
+                    }
+                  />
+                </div>
+
+                {/* Refresh */}
+                <button
+                  onClick={analyze}
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    background: "transparent",
+                    border: "1px solid var(--border-color)",
+                    color: "var(--text-muted)",
+                    fontSize: "12px",
+                    fontFamily: "var(--font-inter)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.color =
+                      "var(--text-primary)";
+                    (e.currentTarget as HTMLElement).style.borderColor =
+                      "var(--gold-border)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.color =
+                      "var(--text-muted)";
+                    (e.currentTarget as HTMLElement).style.borderColor =
+                      "var(--border-color)";
+                  }}
+                >
+                  <RefreshCw style={{ width: "12px", height: "12px" }} />
+                  Refresh Analysis
+                </button>
+              </>
+            )}
+
+            {!stats && !loading && (
+              <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+                <BarChart2
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    color: "var(--gold-primary)",
+                    opacity: 0.3,
+                    margin: "0 auto 1rem",
+                  }}
+                />
+                <p
+                  style={{
+                    fontSize: "13px",
+                    fontFamily: "var(--font-inter)",
+                    color: "var(--text-muted)",
+                    fontStyle: "italic",
+                  }}
+                >
+                  No content to analyze yet.
+                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

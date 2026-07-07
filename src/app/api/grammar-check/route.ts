@@ -45,32 +45,41 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 2048,
+        // In src/app/api/grammar-check/route.ts
+
+        // 1. Increase max_tokens:
+        max_tokens: 4096, // ← was 2048
+
+        // 2. Update system prompt to limit response size:
         system: `You are an expert literary proofreader working on ${genre ?? "fiction"}.
 
 Check ONLY for these specific issues:
 ${selectedInstructions}
 
-CRITICAL JSON RULES:
-- Return ONLY a valid JSON object, no markdown, no backticks
+STRICT RULES:
+- Return ONLY valid JSON, no markdown, no backticks
 - Every string value must be on a single line — NO newlines inside strings
-- Use a space instead of a newline if you need to break text
+- Keep explanations under 100 characters
+- Keep suggestions under 100 characters  
+- Keep quotes under 80 characters
+- Limit to 10 issues maximum
+- If you cannot fit all issues, stop at 10 — never truncate mid-JSON
 
-Respond in this exact format:
+Return this exact format:
 {
   "issues": [
     {
       "type": "missing_word|repetition|awkward|punctuation|tense|pronoun|spacing",
       "severity": "error|warning|suggestion",
-      "quote": "exact verbatim text on one line",
-      "explanation": "what is wrong on one line",
-      "suggestion": "corrected version on one line",
-      "impact": "why this matters on one line"
+      "quote": "exact verbatim text under 80 chars",
+      "explanation": "what is wrong under 100 chars",
+      "suggestion": "corrected version under 100 chars",
+      "impact": "why this matters under 80 chars"
     }
   ],
-  "summary": "2 sentence assessment on one line",
+  "summary": "2 sentence assessment under 200 chars total",
   "score": 0-100,
-  "strengths": ["one strength", "another"]
+  "strengths": ["under 80 chars", "under 80 chars"]
 }
 
 Limit to 15 issues. Return ONLY the JSON object, nothing else.`,
