@@ -612,7 +612,7 @@ export default function GrammarChecker({
       for (let i = 0; i < chunks.length; i++) {
         setProgress(Math.round(((i + 1) / chunks.length) * 100));
 
-        const response = await fetch("/api/editor/grammar-check", {
+        const response = await fetch(`/api/grammar-check`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
