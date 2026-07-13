@@ -1,14 +1,16 @@
-"use client;";
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { RefObject } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Loader2, Check, X, RefreshCw } from "lucide-react";
-
-interface Position {
-  x: number;
-  y: number;
-}
+import {
+  Sparkles,
+  Loader2,
+  Check,
+  X,
+  RefreshCw,
+  ChevronRight,
+} from "lucide-react";
 
 interface InlineAIToolbarProps {
   editorEl: RefObject<HTMLDivElement | null>;
@@ -70,14 +72,16 @@ export default function InlineAIToolbar({
   genre,
   bibleContext,
 }: InlineAIToolbarProps) {
-  const [position, setPosition] = useState<Position | null>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [expanded, setExpanded] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [isFeedback, setIsFeedback] = useState(false);
   const [flipped, setFlipped] = useState(false);
-  const toolbarRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -90,6 +94,7 @@ export default function InlineAIToolbar({
     setActiveAction(null);
     setSelectedText("");
     setIsFeedback(false);
+    setExpanded(false);
     setFlipped(false);
     setTimeout(() => {
       editorEl.current?.focus();
@@ -106,6 +111,7 @@ export default function InlineAIToolbar({
           setPosition(null);
           setSelectedText("");
           setActiveAction(null);
+          setExpanded(false);
         }
       }, 150);
       return;
@@ -121,13 +127,14 @@ export default function InlineAIToolbar({
     const viewportHeight = window.innerHeight;
     const spaceAbove = rect.top;
     const spaceBelow = viewportHeight - rect.bottom;
-    const flip = spaceAbove < 180 && spaceBelow > spaceAbove;
+    const flip = spaceAbove < 60 && spaceBelow > spaceAbove;
 
     setFlipped(flip);
     setSelectedText(text);
     setResult(null);
     setActiveAction(null);
     setIsFeedback(false);
+    setExpanded(false);
     setPosition({
       x: rect.left + rect.width / 2,
       y: flip ? rect.bottom + 8 : rect.top - 8,
@@ -161,17 +168,14 @@ export default function InlineAIToolbar({
         genre ? `The writer is working in the ${genre} genre.` : "",
         "When asked to rewrite or transform text, return ONLY the result — no preamble, no explanation, no quotation marks.",
         "When asked for feedback, be specific, honest, and constructive.",
-        "IMPORTANT: Use the Story Bible to ensure any suggestions are consistent with established characters, world rules, and tone.",
         bibleContext ?? "",
       ]
         .filter(Boolean)
         .join("\n");
 
-      const response = await fetch(`/api/chat`, {
+      const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system: systemPrompt,
           messages: [
@@ -184,7 +188,7 @@ export default function InlineAIToolbar({
       });
 
       if (!response.ok) throw new Error("Failed to get response");
-      const data = await response.json();
+      const data = (await response.json()) as { content: string };
       setResult(data.content ?? "");
     } catch (err) {
       console.error("Inline AI error:", err);
@@ -207,6 +211,7 @@ export default function InlineAIToolbar({
   const handleDiscard = () => {
     setResult(null);
     setActiveAction(null);
+    setExpanded(false);
   };
 
   const handleRetry = () => {
@@ -214,232 +219,243 @@ export default function InlineAIToolbar({
     if (action) void runAction(action);
   };
 
-  const toolbarStyle = {
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-color)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-    fontFamily: "Inter, sans-serif",
-  };
+  if (!position) return null;
 
-  const btnBase = {
-    padding: "5px 8px",
-    fontSize: "11px",
-    fontFamily: "Inter",
-    fontWeight: 500,
-    border: "none",
-    cursor: "pointer",
-    transition: "all 0.15s",
-    whiteSpace: "nowrap" as const,
-    background: "transparent",
-  };
+  const triggerY = flipped ? position.y : position.y;
 
   return (
     <>
-      {/* ── Floating action bar ── */}
+      {/* ── Trigger button — always visible when text selected ── */}
       <AnimatePresence>
-        {position && (
+        {position && !result && (
           <motion.div
-            ref={toolbarRef}
-            initial={{ opacity: 0, y: flipped ? -4 : 4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: flipped ? -4 : 4, scale: 0.97 }}
-            transition={{ duration: 0.12 }}
-            className="fixed z-50"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.1 }}
             style={{
-              left: Math.max(8, Math.min(position.x, window.innerWidth - 480)),
-              top: position.y,
+              position: "fixed",
+              left: position.x,
+              top: triggerY,
               transform: flipped
                 ? "translate(-50%, 0)"
                 : "translate(-50%, -100%)",
+              zIndex: 50,
             }}
           >
-            <div
-              style={{
-                ...toolbarStyle,
-                display: "flex",
-                alignItems: "center",
-                gap: "1px",
-                padding: "3px",
-              }}
-            >
-              {/* Gold top line */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: "15%",
-                  right: "15%",
-                  height: "1px",
-                  background: "var(--gold-primary)",
-                }}
-              />
-
-              {/* AI label */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  padding: "4px 8px",
-                  borderRight: "1px solid var(--border-color)",
-                  marginRight: "2px",
-                  flexShrink: 0,
-                }}
-              >
-                <Sparkles
+            <AnimatePresence mode="wait">
+              {!expanded ? (
+                // ── Single spark button ──
+                <motion.button
+                  key="trigger"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.1 }}
+                  onClick={() => setExpanded(true)}
+                  title="AI Actions"
                   style={{
-                    width: "12px",
-                    height: "12px",
-                    color: "var(--gold-primary)",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontFamily: "Inter",
-                    fontWeight: 600,
-                    letterSpacing: "0.08em",
-                    color: "var(--gold-primary)",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  AI
-                </span>
-              </div>
-
-              {/* Action buttons */}
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action.id}
-                  onClick={() => void runAction(action)}
-                  disabled={loading}
-                  style={{
-                    ...btnBase,
-                    color:
-                      activeAction === action.id && loading
-                        ? "var(--gold-primary)"
-                        : "var(--text-muted)",
-                    background:
-                      activeAction === action.id && loading
-                        ? "var(--gold-subtle)"
-                        : "transparent",
-                    opacity: loading && activeAction !== action.id ? 0.4 : 1,
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: "var(--gold-primary)",
+                    color: "var(--bg-primary)",
+                    border: "none",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 12px rgba(212,168,67,0.4)",
+                    transition: "transform 0.15s",
                   }}
                   onMouseEnter={(e) => {
-                    if (!loading) {
+                    (e.currentTarget as HTMLElement).style.transform =
+                      "scale(1.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.transform =
+                      "scale(1)";
+                  }}
+                >
+                  <Sparkles style={{ width: "13px", height: "13px" }} />
+                </motion.button>
+              ) : (
+                // ── Expanded toolbar ──
+                <motion.div
+                  key="expanded"
+                  initial={{ opacity: 0, scale: 0.95, y: flipped ? -4 : 4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.12 }}
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-color)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "1px",
+                    padding: "3px",
+                    position: "relative",
+                  }}
+                >
+                  {/* Gold top line */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: "15%",
+                      right: "15%",
+                      height: "1px",
+                      background: "var(--gold-primary)",
+                    }}
+                  />
+
+                  {/* AI label */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      padding: "4px 8px",
+                      borderRight: "1px solid var(--border-color)",
+                      marginRight: "2px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Sparkles
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        color: "var(--gold-primary)",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-inter)",
+                        fontWeight: 600,
+                        letterSpacing: "0.08em",
+                        color: "var(--gold-primary)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      AI
+                    </span>
+                  </div>
+
+                  {/* Action buttons */}
+                  {QUICK_ACTIONS.map((action) => (
+                    <button
+                      key={action.id}
+                      onClick={() => void runAction(action)}
+                      disabled={loading}
+                      style={{
+                        padding: "5px 8px",
+                        fontSize: "11px",
+                        fontFamily: "var(--font-inter)",
+                        fontWeight: 500,
+                        border: "none",
+                        cursor: loading ? "not-allowed" : "pointer",
+                        transition: "all 0.15s",
+                        whiteSpace: "nowrap",
+                        background:
+                          activeAction === action.id && loading
+                            ? "var(--gold-subtle)"
+                            : "transparent",
+                        color:
+                          activeAction === action.id && loading
+                            ? "var(--gold-primary)"
+                            : "var(--text-muted)",
+                        opacity:
+                          loading && activeAction !== action.id ? 0.4 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) {
+                          (e.currentTarget as HTMLElement).style.color =
+                            "var(--text-primary)";
+                          (e.currentTarget as HTMLElement).style.background =
+                            "var(--bg-elevated)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!loading || activeAction !== action.id) {
+                          (e.currentTarget as HTMLElement).style.color =
+                            activeAction === action.id && loading
+                              ? "var(--gold-primary)"
+                              : "var(--text-muted)";
+                          (e.currentTarget as HTMLElement).style.background =
+                            activeAction === action.id && loading
+                              ? "var(--gold-subtle)"
+                              : "transparent";
+                        }
+                      }}
+                    >
+                      {loading && activeAction === action.id ? (
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <Loader2
+                            style={{
+                              width: "10px",
+                              height: "10px",
+                              animation: "spin 1s linear infinite",
+                            }}
+                          />
+                          {action.label}
+                        </span>
+                      ) : (
+                        action.label
+                      )}
+                    </button>
+                  ))}
+
+                  {/* Divider + collapse */}
+                  <div
+                    style={{
+                      width: "1px",
+                      height: "16px",
+                      background: "var(--border-color)",
+                      margin: "0 2px",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <button
+                    onClick={() => setExpanded(false)}
+                    title="Collapse"
+                    style={{
+                      padding: "5px 6px",
+                      color: "var(--text-dim)",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.color =
                         "var(--text-primary)";
                       (e.currentTarget as HTMLElement).style.background =
                         "var(--bg-elevated)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!loading || activeAction !== action.id) {
+                    }}
+                    onMouseLeave={(e) => {
                       (e.currentTarget as HTMLElement).style.color =
-                        activeAction === action.id && loading
-                          ? "var(--gold-primary)"
-                          : "var(--text-muted)";
+                        "var(--text-dim)";
                       (e.currentTarget as HTMLElement).style.background =
-                        activeAction === action.id && loading
-                          ? "var(--gold-subtle)"
-                          : "transparent";
-                    }
-                  }}
-                >
-                  {loading && activeAction === action.id ? (
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      <Loader2
-                        style={{
-                          width: "10px",
-                          height: "10px",
-                          animation: "spin 1s linear infinite",
-                        }}
-                      />
-                      {action.label}
-                    </span>
-                  ) : (
-                    action.label
-                  )}
-                </button>
-              ))}
-
-              {/* Divider + close */}
-              <div
-                style={{
-                  width: "1px",
-                  height: "16px",
-                  background: "var(--border-color)",
-                  margin: "0 2px",
-                  flexShrink: 0,
-                }}
-              />
-              <button
-                onClick={handleClose}
-                title="Dismiss (Esc)"
-                style={{
-                  ...btnBase,
-                  padding: "5px 6px",
-                  color: "var(--text-dim)",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color =
-                    "var(--text-primary)";
-                  (e.currentTarget as HTMLElement).style.background =
-                    "var(--bg-elevated)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color =
-                    "var(--text-dim)";
-                  (e.currentTarget as HTMLElement).style.background =
-                    "transparent";
-                }}
-              >
-                <X style={{ width: "12px", height: "12px" }} />
-              </button>
-            </div>
-
-            {/* Arrow */}
-            {!flipped && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  top: "100%",
-                  width: 0,
-                  height: 0,
-                  borderLeft: "4px solid transparent",
-                  borderRight: "4px solid transparent",
-                  borderTop: "4px solid var(--border-color)",
-                }}
-              />
-            )}
-            {flipped && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  bottom: "100%",
-                  width: 0,
-                  height: 0,
-                  borderLeft: "4px solid transparent",
-                  borderRight: "4px solid transparent",
-                  borderBottom: "4px solid var(--border-color)",
-                }}
-              />
-            )}
+                        "transparent";
+                    }}
+                  >
+                    <X style={{ width: "12px", height: "12px" }} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Result panel — fixed bottom right ── */}
+      {/* ── Result panel ── */}
       <AnimatePresence>
         {result !== null && (
           <motion.div
@@ -447,12 +463,15 @@ export default function InlineAIToolbar({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 320 }}
             transition={{ type: "spring", damping: 28, stiffness: 280 }}
-            className="fixed z-50"
             style={{
-              ...toolbarStyle,
+              position: "fixed",
               bottom: "80px",
               right: "16px",
               width: "340px",
+              zIndex: 50,
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-color)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             }}
           >
             {/* Header */}
@@ -478,7 +497,7 @@ export default function InlineAIToolbar({
                 <span
                   style={{
                     fontSize: "11px",
-                    fontFamily: "Inter",
+                    fontFamily: "var(--font-inter)",
                     fontWeight: 600,
                     letterSpacing: "0.06em",
                     textTransform: "uppercase",
@@ -494,7 +513,7 @@ export default function InlineAIToolbar({
                       alignItems: "center",
                       gap: "4px",
                       fontSize: "10px",
-                      fontFamily: "Inter",
+                      fontFamily: "var(--font-inter)",
                       color: "var(--text-dim)",
                       fontStyle: "italic",
                     }}
@@ -542,7 +561,7 @@ export default function InlineAIToolbar({
               <p
                 style={{
                   fontSize: "10px",
-                  fontFamily: "Inter",
+                  fontFamily: "var(--font-inter)",
                   fontWeight: 600,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
@@ -555,13 +574,12 @@ export default function InlineAIToolbar({
               <p
                 style={{
                   fontSize: "12px",
-                  fontFamily: "Cormorant Garamond, Georgia, serif",
+                  fontFamily: "var(--font-cormorant)",
                   fontStyle: "italic",
                   color: "var(--text-muted)",
                   lineHeight: 1.6,
                   margin: 0,
                 }}
-                className="line-clamp-3"
               >
                 &quot;{selectedText.slice(0, 150)}
                 {selectedText.length > 150 ? "…" : ""}&quot;
@@ -580,7 +598,7 @@ export default function InlineAIToolbar({
               <p
                 style={{
                   fontSize: "10px",
-                  fontFamily: "Inter",
+                  fontFamily: "var(--font-inter)",
                   fontWeight: 600,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
@@ -593,7 +611,7 @@ export default function InlineAIToolbar({
               <p
                 style={{
                   fontSize: "14px",
-                  fontFamily: "Cormorant Garamond, Georgia, serif",
+                  fontFamily: "var(--font-cormorant)",
                   color: "var(--text-primary)",
                   lineHeight: 1.8,
                   margin: 0,
@@ -612,48 +630,25 @@ export default function InlineAIToolbar({
                 padding: "10px 14px",
               }}
             >
-              {!isFeedback && (
-                <button
-                  onClick={handleAccept}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "6px 12px",
-                    background: "var(--gold-primary)",
-                    color: "var(--bg-primary)",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontFamily: "Inter",
-                    fontWeight: 600,
-                  }}
-                >
-                  <Check style={{ width: "12px", height: "12px" }} />
-                  Replace
-                </button>
-              )}
-              {isFeedback && (
-                <button
-                  onClick={handleAccept}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    padding: "6px 12px",
-                    background: "var(--gold-primary)",
-                    color: "var(--bg-primary)",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontFamily: "Inter",
-                    fontWeight: 600,
-                  }}
-                >
-                  <Check style={{ width: "12px", height: "12px" }} />
-                  Insert Note
-                </button>
-              )}
+              <button
+                onClick={handleAccept}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "6px 12px",
+                  background: "var(--gold-primary)",
+                  color: "var(--bg-primary)",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontFamily: "var(--font-inter)",
+                  fontWeight: 600,
+                }}
+              >
+                <Check style={{ width: "12px", height: "12px" }} />
+                {isFeedback ? "Insert Note" : "Replace"}
+              </button>
               <button
                 onClick={handleRetry}
                 style={{
@@ -666,7 +661,7 @@ export default function InlineAIToolbar({
                   color: "var(--text-secondary)",
                   cursor: "pointer",
                   fontSize: "12px",
-                  fontFamily: "Inter",
+                  fontFamily: "var(--font-inter)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.color =
@@ -692,7 +687,7 @@ export default function InlineAIToolbar({
                   color: "var(--text-dim)",
                   cursor: "pointer",
                   fontSize: "12px",
-                  fontFamily: "Inter",
+                  fontFamily: "var(--font-inter)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.color =
