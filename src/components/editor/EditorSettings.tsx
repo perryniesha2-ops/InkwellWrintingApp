@@ -54,7 +54,7 @@ export default function EditorSettings({
       <button
         ref={triggerRef}
         onClick={handleOpen}
-        className="flex items-center justify-center w-7 h-7 transition-colors flex-shrink-0"
+        className="flex items-center justify-center w-7 h-7 transition-colors shrink-0"
         title="Editor settings"
         style={{
           color: open ? "var(--text-primary)" : "var(--text-muted)",
