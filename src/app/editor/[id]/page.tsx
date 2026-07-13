@@ -1,4 +1,4 @@
-import { EditorPage } from "@/components/editor/editorpage";
+import { EditorPage } from "@/components/editor/EditorPage";
 
 type PageProps = {
   params: { id: string } | Promise<{ id: string }>;

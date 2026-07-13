@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -18,7 +18,9 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
+import { UploadButton } from "@/lib/uploadthing";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -108,6 +110,7 @@ interface WorldEntry {
   connectedCharacters?: string | null;
   firstIntroduced?: string | null;
   significance?: string | null;
+  images?: string[] | null;
 }
 
 interface BibleNote {
@@ -136,7 +139,7 @@ function Field({
   multiline?: boolean;
   placeholder?: string;
 }) {
-  const base = {
+  const base: React.CSSProperties = {
     width: "100%",
     background: "var(--bg-elevated)",
     border: "1px solid var(--border-color)",
@@ -147,6 +150,7 @@ function Field({
     outline: "none",
     transition: "border-color 0.15s",
     borderRadius: "0",
+    boxSizing: "border-box",
   };
 
   return (
@@ -282,6 +286,67 @@ function Section({
   );
 }
 
+// ── Save / Delete buttons ──────────────────────────────
+
+function ActionBar({
+  onSave,
+  onDelete,
+  saving,
+}: {
+  onSave: () => void;
+  onDelete: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: "8px" }}>
+      <button
+        onClick={onSave}
+        disabled={saving}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "7px 14px",
+          background: "var(--gold-primary)",
+          color: "var(--bg-primary)",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontFamily: "var(--font-inter)",
+          fontWeight: 600,
+          opacity: saving ? 0.6 : 1,
+        }}
+      >
+        {saving ? (
+          <Loader2
+            style={{ width: "13px", height: "13px" }}
+            className="animate-spin"
+          />
+        ) : (
+          <Save style={{ width: "13px", height: "13px" }} />
+        )}
+        Save
+      </button>
+      <button
+        onClick={onDelete}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "7px 12px",
+          background: "transparent",
+          border: "1px solid rgba(239,68,68,0.3)",
+          color: "#f87171",
+          cursor: "pointer",
+          fontSize: "12px",
+        }}
+      >
+        <Trash2 style={{ width: "13px", height: "13px" }} />
+      </button>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────
 
 interface StoryBiblePageProps {
@@ -314,14 +379,16 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
   const [notes, setNotes] = useState<BibleNote[]>([]);
   const [activeNote, setActiveNote] = useState<BibleNote | null>(null);
-
   const [docTitle, setDocTitle] = useState("Your Story");
 
   // Load everything
   useEffect(() => {
     if (!user) return;
     fetch(`/api/bible/${id}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed");
+        return r.json();
+      })
       .then(
         (data: {
           bible: StoryBible;
@@ -340,9 +407,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
           setLoading(false);
         },
       )
-      .catch(() => {
-        router.push("/dashboard");
-      });
+      .catch(() => router.push("/dashboard"));
   }, [id, user, router]);
 
   // ── Characters ──────────────────────────────────────
@@ -362,23 +427,28 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const saveCharacter = async (char: Character) => {
     setSaving(true);
     try {
-      await fetch(`/api/bible/${bible?.id}/characters/${char.id}`, {
+      const res = await fetch(`/api/bible/${bible?.id}/characters/${char.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(char),
       });
-      setCharacters((prev) => prev.map((c) => (c.id === char.id ? char : c)));
+      const updated = (await res.json()) as Character;
+      setCharacters((prev) =>
+        prev.map((c) => (c.id === char.id ? updated : c)),
+      );
+      setActiveCharacter(updated);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteCharacter = async (charId: string) => {
+    if (!confirm("Delete this character?")) return;
     await fetch(`/api/bible/${bible?.id}/characters/${charId}`, {
       method: "DELETE",
     });
     setCharacters((prev) => prev.filter((c) => c.id !== charId));
-    if (activeCharacter?.id === charId) setActiveCharacter(null);
+    setActiveCharacter(null);
   };
 
   // ── Outline ─────────────────────────────────────────
@@ -402,25 +472,28 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const saveSection = async (section: OutlineSection) => {
     setSaving(true);
     try {
-      await fetch(`/api/bible/${bible?.id}/outline/${section.id}`, {
+      const res = await fetch(`/api/bible/${bible?.id}/outline/${section.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(section),
       });
+      const updated = (await res.json()) as OutlineSection;
       setOutlineSections((prev) =>
-        prev.map((s) => (s.id === section.id ? section : s)),
+        prev.map((s) => (s.id === section.id ? updated : s)),
       );
+      setActiveSection(updated);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteSection = async (sectionId: string) => {
+    if (!confirm("Delete this chapter?")) return;
     await fetch(`/api/bible/${bible?.id}/outline/${sectionId}`, {
       method: "DELETE",
     });
     setOutlineSections((prev) => prev.filter((s) => s.id !== sectionId));
-    if (activeSection?.id === sectionId) setActiveSection(null);
+    setActiveSection(null);
   };
 
   // ── World ────────────────────────────────────────────
@@ -440,25 +513,60 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const saveWorldEntry = async (entry: WorldEntry) => {
     setSaving(true);
     try {
-      await fetch(`/api/bible/${bible?.id}/world/${entry.id}`, {
+      const res = await fetch(`/api/bible/${bible?.id}/world/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
       });
+      const updated = (await res.json()) as WorldEntry;
       setWorldEntries((prev) =>
-        prev.map((w) => (w.id === entry.id ? entry : w)),
+        prev.map((w) => (w.id === entry.id ? updated : w)),
       );
+      setActiveWorld(updated);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteWorldEntry = async (entryId: string) => {
+    if (!confirm("Delete this entry?")) return;
     await fetch(`/api/bible/${bible?.id}/world/${entryId}`, {
       method: "DELETE",
     });
     setWorldEntries((prev) => prev.filter((w) => w.id !== entryId));
-    if (activeWorld?.id === entryId) setActiveWorld(null);
+    setActiveWorld(null);
+  };
+
+  const handleImageUploadComplete = async (
+    res: { url: string }[],
+    entry: WorldEntry,
+  ) => {
+    const newUrls = res.map((r) => r.url);
+    const newImages = [...(entry.images ?? []), ...newUrls];
+    const updated = { ...entry, images: newImages };
+    setActiveWorld(updated);
+    setWorldEntries((prev) =>
+      prev.map((w) => (w.id === entry.id ? updated : w)),
+    );
+    await fetch(`/api/bible/${bible?.id}/world/${entry.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: newImages }),
+    });
+  };
+
+  const handleDeleteImage = async (entry: WorldEntry, url: string) => {
+    const newImages = (entry.images ?? []).filter((img) => img !== url);
+    const updated = { ...entry, images: newImages };
+    setActiveWorld(updated);
+    setWorldEntries((prev) =>
+      prev.map((w) => (w.id === entry.id ? updated : w)),
+    );
+    await fetch(`/api/bible/${bible?.id}/world/${entry.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: newImages }),
+    });
   };
 
   // ── Notes ────────────────────────────────────────────
@@ -478,23 +586,26 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const saveNote = async (note: BibleNote) => {
     setSaving(true);
     try {
-      await fetch(`/api/bible/${bible?.id}/notes/${note.id}`, {
+      const res = await fetch(`/api/bible/${bible?.id}/notes/${note.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(note),
       });
-      setNotes((prev) => prev.map((n) => (n.id === note.id ? note : n)));
+      const updated = (await res.json()) as BibleNote;
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
+      setActiveNote(updated);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteNote = async (noteId: string) => {
+    if (!confirm("Delete this note?")) return;
     await fetch(`/api/bible/${bible?.id}/notes/${noteId}`, {
       method: "DELETE",
     });
     setNotes((prev) => prev.filter((n) => n.id !== noteId));
-    if (activeNote?.id === noteId) setActiveNote(null);
+    setActiveNote(null);
   };
 
   if (loading) {
@@ -536,6 +647,41 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
     { id: "world", label: "World", icon: Globe, count: worldEntries.length },
     { id: "notes", label: "Notes", icon: FileText, count: notes.length },
   ] as const;
+
+  const detailPadding = {
+    maxWidth: "720px",
+    margin: "0 auto",
+    padding: "2rem",
+  };
+
+  const detailHeader = (
+    title: string,
+    onSave: () => void,
+    onDelete: () => void,
+  ) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: "1.5rem",
+      }}
+    >
+      <h2
+        style={{
+          fontFamily: "var(--font-dm-sans)",
+          fontWeight: 800,
+          fontSize: "1.5rem",
+          letterSpacing: "-0.03em",
+          color: "var(--text-primary)",
+          margin: 0,
+        }}
+      >
+        {title}
+      </h2>
+      <ActionBar onSave={onSave} onDelete={onDelete} saving={saving} />
+    </div>
+  );
 
   return (
     <div
@@ -725,12 +871,24 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
           {/* List */}
           <div style={{ flex: 1, overflowY: "auto" }}>
-            {/* Characters list */}
-            {activeTab === "characters" && (
-              <div>
+            {/* Add button */}
+            {(() => {
+              const addFns: Record<string, () => void> = {
+                characters: () => void addCharacter(),
+                outline: () => void addSection(),
+                world: () => void addWorldEntry(),
+                notes: () => void addNote(),
+              };
+              const addLabels: Record<string, string> = {
+                characters: "Add Character",
+                outline: "Add Chapter",
+                world: "Add Entry",
+                notes: "Add Note",
+              };
+              return (
                 <div style={{ padding: "8px" }}>
                   <button
-                    onClick={() => void addCharacter()}
+                    onClick={addFns[activeTab]}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -759,393 +917,285 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                     }}
                   >
                     <Plus style={{ width: "13px", height: "13px" }} />
-                    Add Character
+                    {addLabels[activeTab]}
                   </button>
                 </div>
-                {characters.map((char) => (
-                  <button
-                    key={char.id}
-                    onClick={() => setActiveCharacter(char)}
+              );
+            })()}
+
+            {/* Characters list */}
+            {activeTab === "characters" &&
+              characters.map((char) => (
+                <button
+                  key={char.id}
+                  onClick={() => setActiveCharacter(char)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 16px",
+                    background:
+                      activeCharacter?.id === char.id
+                        ? "var(--gold-subtle)"
+                        : "transparent",
+                    border: "none",
+                    borderLeft:
+                      activeCharacter?.id === char.id
+                        ? "2px solid var(--gold-primary)"
+                        : "2px solid transparent",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeCharacter?.id !== char.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "var(--bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeCharacter?.id !== char.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "transparent";
+                  }}
+                >
+                  <div
                     style={{
-                      width: "100%",
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      background: char.color ?? "var(--bg-elevated)",
+                      border: "1px solid var(--border-color)",
                       display: "flex",
                       alignItems: "center",
-                      gap: "10px",
-                      padding: "10px 16px",
-                      background:
-                        activeCharacter?.id === char.id
-                          ? "var(--gold-subtle)"
-                          : "transparent",
-                      border: "none",
-                      borderLeft:
-                        activeCharacter?.id === char.id
-                          ? "2px solid var(--gold-primary)"
-                          : "2px solid transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeCharacter?.id !== char.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--bg-elevated)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeCharacter?.id !== char.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "transparent";
+                      justifyContent: "center",
+                      flexShrink: 0,
                     }}
                   >
-                    <div
+                    <span
                       style={{
-                        width: "28px",
-                        height: "28px",
-                        borderRadius: "50%",
-                        background: char.color ?? "var(--bg-elevated)",
-                        border: "1px solid var(--border-color)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
+                        fontSize: "11px",
+                        fontFamily: "var(--font-dm-sans)",
+                        fontWeight: 700,
+                        color: "var(--text-primary)",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontFamily: "var(--font-dm-sans)",
-                          fontWeight: 700,
-                          color: "var(--text-primary)",
-                        }}
-                      >
-                        {char.name.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {char.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        fontFamily: "var(--font-inter)",
+                        fontWeight: 500,
+                        color: "var(--text-primary)",
+                        margin: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {char.name}
+                    </p>
+                    {char.role && (
                       <p
                         style={{
-                          fontSize: "12px",
+                          fontSize: "10px",
                           fontFamily: "var(--font-inter)",
-                          fontWeight: 500,
-                          color: "var(--text-primary)",
+                          color: "var(--text-dim)",
                           margin: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
                         }}
                       >
-                        {char.name}
+                        {char.role}
                       </p>
-                      {char.role && (
-                        <p
-                          style={{
-                            fontSize: "10px",
-                            fontFamily: "var(--font-inter)",
-                            color: "var(--text-dim)",
-                            margin: 0,
-                          }}
-                        >
-                          {char.role}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+                    )}
+                  </div>
+                </button>
+              ))}
 
             {/* Outline list */}
-            {activeTab === "outline" && (
-              <div>
-                <div style={{ padding: "8px" }}>
-                  <button
-                    onClick={() => void addSection()}
+            {activeTab === "outline" &&
+              outlineSections.map((section, i) => (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 16px",
+                    background:
+                      activeSection?.id === section.id
+                        ? "var(--gold-subtle)"
+                        : "transparent",
+                    border: "none",
+                    borderLeft:
+                      activeSection?.id === section.id
+                        ? "2px solid var(--gold-primary)"
+                        : "2px solid transparent",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeSection?.id !== section.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "var(--bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeSection?.id !== section.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "transparent";
+                  }}
+                >
+                  <span
                     style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 10px",
-                      background: "transparent",
-                      border: "1px dashed var(--border-color)",
-                      cursor: "pointer",
-                      color: "var(--text-muted)",
+                      fontSize: "10px",
+                      fontFamily: "var(--font-inter)",
+                      fontWeight: 600,
+                      color: "var(--text-dim)",
+                      flexShrink: 0,
+                      width: "20px",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    style={{
                       fontSize: "12px",
                       fontFamily: "var(--font-inter)",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--gold-border)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--gold-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--border-color)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--text-muted)";
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <Plus style={{ width: "13px", height: "13px" }} />
-                    Add Chapter
-                  </button>
-                </div>
-                {outlineSections.map((section, i) => (
-                  <button
-                    key={section.id}
-                    onClick={() => setActiveSection(section)}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "10px 16px",
-                      background:
-                        activeSection?.id === section.id
-                          ? "var(--gold-subtle)"
-                          : "transparent",
-                      border: "none",
-                      borderLeft:
-                        activeSection?.id === section.id
-                          ? "2px solid var(--gold-primary)"
-                          : "2px solid transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeSection?.id !== section.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--bg-elevated)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeSection?.id !== section.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "transparent";
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontFamily: "var(--font-inter)",
-                        fontWeight: 600,
-                        color: "var(--text-dim)",
-                        flexShrink: 0,
-                        width: "20px",
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        fontFamily: "var(--font-inter)",
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {section.title}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+                    {section.title}
+                  </span>
+                </button>
+              ))}
 
             {/* World list */}
-            {activeTab === "world" && (
-              <div>
-                <div style={{ padding: "8px" }}>
-                  <button
-                    onClick={() => void addWorldEntry()}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 10px",
-                      background: "transparent",
-                      border: "1px dashed var(--border-color)",
-                      cursor: "pointer",
-                      color: "var(--text-muted)",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--gold-border)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--gold-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--border-color)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--text-muted)";
-                    }}
-                  >
-                    <Plus style={{ width: "13px", height: "13px" }} />
-                    Add Entry
-                  </button>
-                </div>
-                {worldEntries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    onClick={() => setActiveWorld(entry)}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "10px 16px",
-                      background:
-                        activeWorld?.id === entry.id
-                          ? "var(--gold-subtle)"
-                          : "transparent",
-                      border: "none",
-                      borderLeft:
-                        activeWorld?.id === entry.id
-                          ? "2px solid var(--gold-primary)"
-                          : "2px solid transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeWorld?.id !== entry.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--bg-elevated)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeWorld?.id !== entry.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "transparent";
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p
-                        style={{
-                          fontSize: "12px",
-                          fontFamily: "var(--font-inter)",
-                          fontWeight: 500,
-                          color: "var(--text-primary)",
-                          margin: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {entry.title}
-                      </p>
-                      {entry.category && (
-                        <p
-                          style={{
-                            fontSize: "10px",
-                            fontFamily: "var(--font-inter)",
-                            color: "var(--text-dim)",
-                            margin: 0,
-                          }}
-                        >
-                          {entry.category}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Notes list */}
-            {activeTab === "notes" && (
-              <div>
-                <div style={{ padding: "8px" }}>
-                  <button
-                    onClick={() => void addNote()}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 10px",
-                      background: "transparent",
-                      border: "1px dashed var(--border-color)",
-                      cursor: "pointer",
-                      color: "var(--text-muted)",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--gold-border)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--gold-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor =
-                        "var(--border-color)";
-                      (e.currentTarget as HTMLElement).style.color =
-                        "var(--text-muted)";
-                    }}
-                  >
-                    <Plus style={{ width: "13px", height: "13px" }} />
-                    Add Note
-                  </button>
-                </div>
-                {notes.map((note) => (
-                  <button
-                    key={note.id}
-                    onClick={() => setActiveNote(note)}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      padding: "10px 16px",
-                      background:
-                        activeNote?.id === note.id
-                          ? "var(--gold-subtle)"
-                          : "transparent",
-                      border: "none",
-                      borderLeft:
-                        activeNote?.id === note.id
-                          ? "2px solid var(--gold-primary)"
-                          : "2px solid transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeNote?.id !== note.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--bg-elevated)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeNote?.id !== note.id)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "transparent";
-                    }}
-                  >
-                    <span
+            {activeTab === "world" &&
+              worldEntries.map((entry) => (
+                <button
+                  key={entry.id}
+                  onClick={() => setActiveWorld(entry)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 16px",
+                    background:
+                      activeWorld?.id === entry.id
+                        ? "var(--gold-subtle)"
+                        : "transparent",
+                    border: "none",
+                    borderLeft:
+                      activeWorld?.id === entry.id
+                        ? "2px solid var(--gold-primary)"
+                        : "2px solid transparent",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeWorld?.id !== entry.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "var(--bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeWorld?.id !== entry.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "transparent";
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
                       style={{
                         fontSize: "12px",
                         fontFamily: "var(--font-inter)",
                         fontWeight: 500,
                         color: "var(--text-primary)",
+                        margin: 0,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {note.title}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+                      {entry.title}
+                    </p>
+                    {entry.category && (
+                      <p
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-inter)",
+                          color: "var(--text-dim)",
+                          margin: 0,
+                        }}
+                      >
+                        {entry.category}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))}
+
+            {/* Notes list */}
+            {activeTab === "notes" &&
+              notes.map((note) => (
+                <button
+                  key={note.id}
+                  onClick={() => setActiveNote(note)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 16px",
+                    background:
+                      activeNote?.id === note.id
+                        ? "var(--gold-subtle)"
+                        : "transparent",
+                    border: "none",
+                    borderLeft:
+                      activeNote?.id === note.id
+                        ? "2px solid var(--gold-primary)"
+                        : "2px solid transparent",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeNote?.id !== note.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "var(--bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeNote?.id !== note.id)
+                      (e.currentTarget as HTMLElement).style.background =
+                        "transparent";
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontFamily: "var(--font-inter)",
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {note.title}
+                  </span>
+                </button>
+              ))}
           </div>
         </div>
 
@@ -1159,68 +1209,12 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
         >
           {/* Character detail */}
           {activeTab === "characters" && activeCharacter && (
-            <div
-              style={{ maxWidth: "720px", margin: "0 auto", padding: "2rem" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <h2
-                  style={{
-                    fontFamily: "var(--font-dm-sans)",
-                    fontWeight: 800,
-                    fontSize: "1.5rem",
-                    letterSpacing: "-0.03em",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {activeCharacter.name || "Unnamed Character"}
-                </h2>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => void saveCharacter(activeCharacter)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 14px",
-                      background: "var(--gold-primary)",
-                      color: "var(--bg-primary)",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Save style={{ width: "13px", height: "13px" }} />
-                    Save
-                  </button>
-                  <button
-                    onClick={() => void deleteCharacter(activeCharacter.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 12px",
-                      background: "transparent",
-                      border: "1px solid rgba(239,68,68,0.3)",
-                      color: "#f87171",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                    }}
-                  >
-                    <Trash2 style={{ width: "13px", height: "13px" }} />
-                  </button>
-                </div>
-              </div>
-
+            <div style={detailPadding}>
+              {detailHeader(
+                activeCharacter.name || "Unnamed Character",
+                () => void saveCharacter(activeCharacter),
+                () => void deleteCharacter(activeCharacter.id),
+              )}
               <Section title="Identity">
                 <div
                   style={{
@@ -1274,7 +1268,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   />
                 </div>
               </Section>
-
               <Section title="Physical">
                 <div
                   style={{
@@ -1343,7 +1336,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Personality">
                 <Field
                   label="Core Traits (comma separated)"
@@ -1420,7 +1412,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Background">
                 <Field
                   label="Backstory"
@@ -1471,7 +1462,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Story Role">
                 <Field
                   label="External Goal"
@@ -1517,7 +1507,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Romance" defaultOpen={false}>
                 <Field
                   label="Attachment Style"
@@ -1573,67 +1562,12 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
           {/* Outline detail */}
           {activeTab === "outline" && activeSection && (
-            <div
-              style={{ maxWidth: "720px", margin: "0 auto", padding: "2rem" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <h2
-                  style={{
-                    fontFamily: "var(--font-dm-sans)",
-                    fontWeight: 800,
-                    fontSize: "1.5rem",
-                    letterSpacing: "-0.03em",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {activeSection.title || "Untitled Chapter"}
-                </h2>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => void saveSection(activeSection)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 14px",
-                      background: "var(--gold-primary)",
-                      color: "var(--bg-primary)",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Save style={{ width: "13px", height: "13px" }} />
-                    Save
-                  </button>
-                  <button
-                    onClick={() => void deleteSection(activeSection.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 12px",
-                      background: "transparent",
-                      border: "1px solid rgba(239,68,68,0.3)",
-                      color: "#f87171",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <Trash2 style={{ width: "13px", height: "13px" }} />
-                  </button>
-                </div>
-              </div>
-
+            <div style={detailPadding}>
+              {detailHeader(
+                activeSection.title || "Untitled Chapter",
+                () => void saveSection(activeSection),
+                () => void deleteSection(activeSection.id),
+              )}
               <Section title="Basics">
                 <div
                   style={{
@@ -1688,7 +1622,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Plot">
                 <Field
                   label="Opening Hook"
@@ -1739,7 +1672,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Emotion">
                 <Field
                   label="Character Emotional State (Start)"
@@ -1771,10 +1703,9 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   onChange={(v) =>
                     setActiveSection({ ...activeSection, pacing: v })
                   }
-                  placeholder="slow burn, fast-paced, tension-building..."
+                  placeholder="slow burn, fast-paced..."
                 />
               </Section>
-
               <Section title="Craft">
                 <Field
                   label="Themes"
@@ -1814,67 +1745,12 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
           {/* World detail */}
           {activeTab === "world" && activeWorld && (
-            <div
-              style={{ maxWidth: "720px", margin: "0 auto", padding: "2rem" }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <h2
-                  style={{
-                    fontFamily: "var(--font-dm-sans)",
-                    fontWeight: 800,
-                    fontSize: "1.5rem",
-                    letterSpacing: "-0.03em",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {activeWorld.title || "Untitled Entry"}
-                </h2>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => void saveWorldEntry(activeWorld)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 14px",
-                      background: "var(--gold-primary)",
-                      color: "var(--bg-primary)",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Save style={{ width: "13px", height: "13px" }} />
-                    Save
-                  </button>
-                  <button
-                    onClick={() => void deleteWorldEntry(activeWorld.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 12px",
-                      background: "transparent",
-                      border: "1px solid rgba(239,68,68,0.3)",
-                      color: "#f87171",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <Trash2 style={{ width: "13px", height: "13px" }} />
-                  </button>
-                </div>
-              </div>
-
+            <div style={detailPadding}>
+              {detailHeader(
+                activeWorld.title || "Untitled Entry",
+                () => void saveWorldEntry(activeWorld),
+                () => void deleteWorldEntry(activeWorld.id),
+              )}
               <Section title="Details">
                 <div
                   style={{
@@ -1896,7 +1772,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                     onChange={(v) =>
                       setActiveWorld({ ...activeWorld, category: v })
                     }
-                    placeholder="location, magic, faction, event..."
+                    placeholder="location, magic, faction..."
                   />
                 </div>
                 <Field
@@ -1945,7 +1821,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Sensory">
                 <Field
                   label="Looks Like"
@@ -1980,7 +1855,6 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
-
               <Section title="Story Role">
                 <Field
                   label="Plot Relevance"
@@ -2014,14 +1888,94 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   multiline
                 />
               </Section>
+              <Section title="Reference Images" defaultOpen={false}>
+                {(activeWorld.images ?? []).length > 0 && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: "8px",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    {(activeWorld.images ?? []).map((url, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          position: "relative",
+                          aspectRatio: "1",
+                          overflow: "hidden",
+                          border: "1px solid var(--border-color)",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Reference ${i + 1}`}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                        <button
+                          onClick={() =>
+                            void handleDeleteImage(activeWorld, url)
+                          }
+                          style={{
+                            position: "absolute",
+                            top: "4px",
+                            right: "4px",
+                            width: "20px",
+                            height: "20px",
+                            background: "rgba(0,0,0,0.7)",
+                            border: "none",
+                            color: "#fff",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <X style={{ width: "12px", height: "12px" }} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <UploadButton
+                  endpoint="worldImageUploader"
+                  onClientUploadComplete={(res) =>
+                    void handleImageUploadComplete(res, activeWorld)
+                  }
+                  onUploadError={(error) => {
+                    console.error("Upload error:", error);
+                    alert("Upload failed. Please try again.");
+                  }}
+                  appearance={{
+                    button: {
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-muted)",
+                      border: "1px dashed var(--border-color)",
+                      borderRadius: "0",
+                      fontSize: "12px",
+                      fontFamily: "var(--font-inter)",
+                      width: "100%",
+                      padding: "10px",
+                    },
+                    allowedContent: {
+                      color: "var(--text-dim)",
+                      fontSize: "10px",
+                    },
+                  }}
+                />
+              </Section>
             </div>
           )}
 
           {/* Notes detail */}
           {activeTab === "notes" && activeNote && (
-            <div
-              style={{ maxWidth: "720px", margin: "0 auto", padding: "2rem" }}
-            >
+            <div style={detailPadding}>
               <div
                 style={{
                   display: "flex",
@@ -2048,43 +2002,11 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   }}
                   placeholder="Note title"
                 />
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => void saveNote(activeNote)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 14px",
-                      background: "var(--gold-primary)",
-                      color: "var(--bg-primary)",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Save style={{ width: "13px", height: "13px" }} />
-                    Save
-                  </button>
-                  <button
-                    onClick={() => void deleteNote(activeNote.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "7px 12px",
-                      background: "transparent",
-                      border: "1px solid rgba(239,68,68,0.3)",
-                      color: "#f87171",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <Trash2 style={{ width: "13px", height: "13px" }} />
-                  </button>
-                </div>
+                <ActionBar
+                  onSave={() => void saveNote(activeNote)}
+                  onDelete={() => void deleteNote(activeNote.id)}
+                  saving={saving}
+                />
               </div>
               <textarea
                 value={activeNote.content ?? ""}
@@ -2110,50 +2032,53 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
           )}
 
           {/* Empty states */}
-          {activeTab === "characters" &&
-            !activeCharacter &&
-            characters.length === 0 && (
-              <div
+          {activeTab === "characters" && !activeCharacter && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                textAlign: "center",
+                padding: "3rem",
+              }}
+            >
+              <Users
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                  textAlign: "center",
-                  padding: "3rem",
+                  width: "40px",
+                  height: "40px",
+                  color: "var(--gold-primary)",
+                  opacity: 0.3,
+                  marginBottom: "1rem",
+                }}
+              />
+              <h3
+                style={{
+                  fontFamily: "var(--font-dm-sans)",
+                  fontWeight: 700,
+                  fontSize: "1.1rem",
+                  color: "var(--text-primary)",
+                  marginBottom: "8px",
                 }}
               >
-                <Users
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    color: "var(--gold-primary)",
-                    opacity: 0.3,
-                    marginBottom: "1rem",
-                  }}
-                />
-                <h3
-                  style={{
-                    fontFamily: "var(--font-dm-sans)",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                    color: "var(--text-primary)",
-                    marginBottom: "8px",
-                  }}
-                >
-                  No characters yet
-                </h3>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    fontFamily: "var(--font-inter)",
-                    color: "var(--text-muted)",
-                    marginBottom: "1.5rem",
-                  }}
-                >
-                  Add your first character to start building your Story Bible.
-                </p>
+                {characters.length === 0
+                  ? "No characters yet"
+                  : "Select a character"}
+              </h3>
+              <p
+                style={{
+                  fontSize: "13px",
+                  fontFamily: "var(--font-inter)",
+                  color: "var(--text-muted)",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                {characters.length === 0
+                  ? "Add your first character to start building your Story Bible."
+                  : "Choose a character from the list to view details."}
+              </p>
+              {characters.length === 0 && (
                 <button
                   onClick={() => void addCharacter()}
                   style={{
@@ -2173,32 +2098,9 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                   <Plus style={{ width: "14px", height: "14px" }} /> Add
                   Character
                 </button>
-              </div>
-            )}
-
-          {activeTab === "characters" &&
-            !activeCharacter &&
-            characters.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: "13px",
-                    fontFamily: "var(--font-inter)",
-                    color: "var(--text-muted)",
-                    fontStyle: "italic",
-                  }}
-                >
-                  Select a character to view details
-                </p>
-              </div>
-            )}
+              )}
+            </div>
+          )}
 
           {activeTab === "outline" && !activeSection && (
             <div
@@ -2219,7 +2121,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
               >
                 {outlineSections.length === 0
                   ? "Add your first chapter to start outlining."
-                  : "Select a chapter to view details"}
+                  : "Select a chapter to view details."}
               </p>
             </div>
           )}
@@ -2242,8 +2144,8 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                 }}
               >
                 {worldEntries.length === 0
-                  ? "Add your first world entry to start building."
-                  : "Select an entry to view details"}
+                  ? "Add your first world entry."
+                  : "Select an entry to view details."}
               </p>
             </div>
           )}
@@ -2267,7 +2169,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
               >
                 {notes.length === 0
                   ? "Add your first note."
-                  : "Select a note to view details"}
+                  : "Select a note to view details."}
               </p>
             </div>
           )}

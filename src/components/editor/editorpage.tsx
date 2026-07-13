@@ -22,6 +22,8 @@ import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
 import type { Template } from "@/lib/templates";
 import { useEditorPrefs } from "@/hooks/useEditorPrefs";
+import { BookText } from "lucide-react";
+import { Palette } from "lucide-react";
 
 const WritingEditor = dynamic(
   () => import("@/components/editor/WritingEditor"),
@@ -54,6 +56,14 @@ const TemplatePicker = dynamic(
 );
 const EditorSettings = dynamic(
   () => import("@/components/editor/EditorSettings"),
+  { ssr: false },
+);
+const ThesaurusPanel = dynamic(
+  () => import("@/components/editor/ThesaurusPanel"),
+  { ssr: false },
+);
+const SceneIllustrator = dynamic(
+  () => import("@/components/editor/SceneIllustrator"),
   { ssr: false },
 );
 
@@ -177,6 +187,10 @@ export function EditorPage({ id }: EditorPageProps) {
 
   const { prefs, updatePrefs, editorStyle } = useEditorPrefs();
 
+  const [thesaurusOpen, setThesaurusOpen] = useState(false);
+
+  const [illustratorOpen, setIllustratorOpen] = useState(false);
+
   const titleRef = useRef(title);
   const contentRef = useRef(content);
   const genreRef = useRef(genre);
@@ -283,16 +297,29 @@ export function EditorPage({ id }: EditorPageProps) {
   };
 
   const openRightPanel = (
-    panel: "chat" | "consistency" | "grammar" | "readability",
+    panel:
+      | "chat"
+      | "consistency"
+      | "grammar"
+      | "readability"
+      | "thesaurus"
+      | "illustrator",
   ) => {
     setChatOpen(panel === "chat" ? (o) => !o : false);
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
     setGrammarOpen(panel === "grammar" ? (o) => !o : false);
     setReadabilityOpen(panel === "readability" ? (o) => !o : false);
+    setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
+    setIllustratorOpen(panel === "illustrator" ? (o) => !o : false);
   };
 
   const anyRightPanelOpen =
-    (chatOpen || consistencyOpen || readabilityOpen || grammarOpen) &&
+    (chatOpen ||
+      consistencyOpen ||
+      readabilityOpen ||
+      grammarOpen ||
+      thesaurusOpen ||
+      illustratorOpen) &&
     !focusMode;
 
   if (loading) {
@@ -635,6 +662,18 @@ export function EditorPage({ id }: EditorPageProps) {
                 active={readabilityOpen}
                 onClick={() => openRightPanel("readability")}
               />
+              <ActionButton
+                icon={BookText}
+                label="Thesaurus"
+                active={thesaurusOpen}
+                onClick={() => openRightPanel("thesaurus")}
+              />
+              <ActionButton
+                icon={Palette}
+                label="Scene Illustrator"
+                active={illustratorOpen}
+                onClick={() => openRightPanel("illustrator")}
+              />
               <div
                 style={{
                   height: "1px",
@@ -694,6 +733,23 @@ export function EditorPage({ id }: EditorPageProps) {
         <TemplatePicker
           onSelect={handleTemplateSelect}
           onClose={doc ? () => setShowTemplates(false) : undefined}
+        />
+      )}
+
+      {ThesaurusPanel && (
+        <ThesaurusPanel
+          editor={editor}
+          isOpen={thesaurusOpen}
+          onClose={() => setThesaurusOpen(false)}
+        />
+      )}
+      {SceneIllustrator && (
+        <SceneIllustrator
+          editor={editor}
+          genre={genre}
+          bibleContext={bibleContext}
+          isOpen={illustratorOpen}
+          onClose={() => setIllustratorOpen(false)}
         />
       )}
 
