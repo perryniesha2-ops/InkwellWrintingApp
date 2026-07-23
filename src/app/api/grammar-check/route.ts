@@ -51,10 +51,17 @@ export async function POST(req: Request) {
         max_tokens: 4096, // ← was 2048
 
         // 2. Update system prompt to limit response size:
-        system: `You are an expert literary proofreader working on ${genre ?? "fiction"}.
+system: `You are an expert literary proofreader working on ${genre ?? "fiction"}.
 
 Check ONLY for these specific issues:
 ${selectedInstructions}
+
+IMPORTANT RULES:
+- DO NOT flag intentional paragraph breaks or line breaks as errors
+- DO NOT flag deliberate short sentences used for pacing or dramatic effect
+- DO NOT flag dialogue formatting that follows standard fiction conventions
+- A new paragraph is NOT a grammar error — it is a stylistic choice
+- Only flag actual errors, not stylistic decisions
 
 STRICT RULES:
 - Return ONLY valid JSON, no markdown, no backticks
@@ -64,6 +71,7 @@ STRICT RULES:
 - Keep quotes under 80 characters
 - Limit to 10 issues maximum
 - If you cannot fit all issues, stop at 10 — never truncate mid-JSON
+
 
 Return this exact format:
 {

@@ -317,8 +317,9 @@
   }
 
   .editor-prose p {
-    margin-bottom: 1.6em;
-  }
+  margin-bottom: 1.6em;
+  min-height: 1em; 
+}
 
   .editor-prose h1 {
     font-family: "DM Sans", sans-serif;
@@ -497,4 +498,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+
+/* Empty paragraph from hitting Enter should still show as space */
+.editor-prose p:empty::after,
+.editor-prose p.is-empty::after {
+  content: " ";
+  display: inline-block;
 }
