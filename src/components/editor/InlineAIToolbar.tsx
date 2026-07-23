@@ -164,7 +164,7 @@ export default function InlineAIToolbar({
 
     try {
       const systemPrompt = [
-        "You are Inkwell, a precise literary writing assistant.",
+        "You are Prosr, a precise literary writing assistant.",
         genre ? `The writer is working in the ${genre} genre.` : "",
         "When asked to rewrite or transform text, return ONLY the result — no preamble, no explanation, no quotation marks.",
         "When asked for feedback, be specific, honest, and constructive.",

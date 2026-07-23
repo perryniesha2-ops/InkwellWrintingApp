@@ -88,7 +88,7 @@ export function useChat(options: UseChatOptions) {
         const currentContent = options.documentContentRef.current;
 
         const systemContext = [
-          "You are Inkwell, a warm but honest literary writing assistant.",
+          "You are Prosr, a warm but honest literary writing assistant.",
           "Celebrate what's working, flag what isn't. Be specific and kind.",
           "Never rewrite for the writer — guide them to find the answer themselves.",
           "IMPORTANT: Use the Story Bible data to ensure consistency.",

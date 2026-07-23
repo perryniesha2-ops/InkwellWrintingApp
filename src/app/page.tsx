@@ -114,7 +114,7 @@ export default function LandingPage() {
                 color: "var(--text-primary)",
               }}
             >
-              Inkwell
+              Prosr
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
@@ -299,7 +299,7 @@ export default function LandingPage() {
               textTransform: "uppercase",
             }}
           >
-            What Inkwell does
+            What Prosr does
           </span>
           <h2
             style={{
@@ -398,7 +398,7 @@ export default function LandingPage() {
               textTransform: "uppercase",
             }}
           >
-            Why Inkwell
+            Why Prosr
           </span>
           <h2
             style={{
@@ -472,7 +472,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Inkwell */}
+          {/* Prosr */}
           <div
             style={{
               padding: "2rem",
@@ -491,7 +491,7 @@ export default function LandingPage() {
                 marginBottom: "1.5rem",
               }}
             >
-              Inkwell
+              Prosr
             </p>
             <div
               style={{ display: "flex", flexDirection: "column", gap: "12px" }}
@@ -573,7 +573,7 @@ export default function LandingPage() {
               flexShrink: 0,
             }}
           >
-            Open Inkwell{" "}
+            Open Prosr{" "}
             <ArrowRight style={{ width: "16px", height: "16px" }} />
           </Link>
         </div>
@@ -608,7 +608,7 @@ export default function LandingPage() {
                 color: "var(--text-muted)",
               }}
             >
-              Inkwell
+              Prosr
             </span>
           </div>
           <p

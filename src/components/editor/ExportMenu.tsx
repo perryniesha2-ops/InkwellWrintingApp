@@ -284,7 +284,7 @@ export default function ExportMenu({
       });
 
       const doc = new Document({
-        creator: "Inkwell",
+        creator: "Prosr",
         title,
         description: genre ?? "",
         styles: {

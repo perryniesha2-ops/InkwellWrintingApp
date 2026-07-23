@@ -54,7 +54,7 @@ export const SIZE_OPTIONS = [
   },
 ];
 
-const STORAGE_KEY = "inkwell-editor-prefs";
+const STORAGE_KEY = "prosr-editor-prefs";
 
 function loadPrefs(): EditorPrefs {
   try {

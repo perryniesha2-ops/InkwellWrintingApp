@@ -150,7 +150,7 @@ export default function ChatPanel({
                     letterSpacing: "-0.01em",
                   }}
                 >
-                  {view === "history" ? "Chat History" : "Inkwell Assistant"}
+                  {view === "history" ? "Chat History" : "Prosr Assistant"}
                 </span>
               </div>
               <div

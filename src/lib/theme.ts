@@ -9,7 +9,7 @@ export const THEMES: {
   { value: "light", label: "Light", preview: ["#f5f5f5", "#b8922a"] },
 ];
 
-const STORAGE_KEY = "inkwell-theme";
+const STORAGE_KEY = "prosr-theme";
 
 export function getTheme(): Theme {
   try {

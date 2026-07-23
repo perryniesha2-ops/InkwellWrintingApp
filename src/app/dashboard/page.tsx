@@ -12,6 +12,7 @@ import {
   LogOut,
   BookMarked,
   ArrowRight,
+  Trash2,
 } from "lucide-react";
 import { useClerk, useUser } from "@clerk/nextjs";
 
@@ -29,6 +30,8 @@ export default function DashboardPage() {
   const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (!user) return;
@@ -51,6 +54,19 @@ export default function DashboardPage() {
     if (days < 7) return `${days}d ago`;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
+
+  const deleteDocument = async (docId: string, e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!confirm("Delete this document? This cannot be undone.")) return;
+  setDeleting(docId);
+  try {
+    await fetch(`/api/documents/${docId}`, { method: "DELETE" });
+    setDocuments((prev) => prev.filter((d) => d.id !== docId));
+  } finally {
+    setDeleting(null);
+  }
+};
 
   return (
     <div
@@ -100,7 +116,7 @@ export default function DashboardPage() {
                 letterSpacing: "-0.02em",
               }}
             >
-              Inkwell
+              Prosr
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
@@ -200,7 +216,7 @@ export default function DashboardPage() {
             </h1>
           </div>
           <button
-            onClick={() => router.push("/editor/new")}
+            onClick={() => router.push("/onboarding")}
             className="btn-gold"
             style={{
               padding: "10px 20px",
@@ -286,7 +302,7 @@ export default function DashboardPage() {
               Every great story starts with a blank page.
             </p>
             <button
-              onClick={() => router.push("/editor/new")}
+              onClick={() => router.push("/onboarding")}
               className="btn-gold"
               style={{
                 padding: "10px 24px",
@@ -441,7 +457,29 @@ export default function DashboardPage() {
                       >
                         {formatDate(doc.updatedAt)}
                       </span>
-                    </div>
+                   <button
+    onClick={(e) => void deleteDocument(doc.id, e)}
+    disabled={deleting === doc.id}
+    style={{
+      display: "flex", alignItems: "center", justifyContent: "center",
+      width: "28px", height: "28px",
+      background: "transparent", border: "none",
+      color: "var(--text-dim)", cursor: "pointer",
+      transition: "all 0.15s",
+    }}
+    onMouseEnter={(e) => {
+      (e.currentTarget as HTMLElement).style.color = "#ef4444";
+      (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.08)";
+    }}
+    onMouseLeave={(e) => {
+      (e.currentTarget as HTMLElement).style.color = "var(--text-dim)";
+      (e.currentTarget as HTMLElement).style.background = "transparent";
+    }}>
+    {deleting === doc.id
+      ? <Loader2 style={{ width: "13px", height: "13px" }} className="animate-spin" />
+      : <Trash2 style={{ width: "13px", height: "13px" }} />}
+  </button>
+</div>
                     <ArrowRight
                       style={{
                         width: "14px",
@@ -451,6 +489,7 @@ export default function DashboardPage() {
                       }}
                       className="group-hover:opacity-100"
                     />
+                    
                   </div>
                 </Link>
 
@@ -492,7 +531,7 @@ export default function DashboardPage() {
 
             {/* New document row */}
             <button
-              onClick={() => router.push("/editor/new")}
+              onClick={() => router.push("/onboarding")}
               style={{
                 width: "100%",
                 padding: "14px 0",

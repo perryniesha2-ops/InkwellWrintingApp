@@ -16,7 +16,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Inkwell — AI Writing Assistant",
+  title: "Prosr — AI Writing Assistant",
   description: "A writing environment built for fiction authors.",
 };
 
