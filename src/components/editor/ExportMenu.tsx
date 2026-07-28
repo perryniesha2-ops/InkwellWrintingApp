@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, FileText, File, Loader2 } from "lucide-react";
+import { Download, FileText, File, Loader2, BookOpen } from "lucide-react";
 import { createPortal } from "react-dom";
 
 interface DocumentSection {
@@ -106,7 +106,34 @@ export default function ExportMenu({
       setExporting(null);
     }
   };
+const handleEpub = async () => {
+  setOpen(false);
+  setExporting("epub");
+  try {
+    if (!documentId) {
+      alert("Save your document first before exporting.");
+      return;
+    }
 
+    const response = await fetch(`/api/documents/${documentId}/export/epub`);
+    if (!response.ok) throw new Error("Export failed");
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title || "manuscript"}.epub`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("EPUB export error:", err);
+    alert("EPUB export failed. Please try again.");
+  } finally {
+    setExporting(null);
+  }
+};
   const handlePdf = async () => {
     setOpen(false);
     setExporting("pdf");
@@ -307,6 +334,8 @@ export default function ExportMenu({
 
   const ITEMS = [
     { label: "Word Document", ext: ".docx", icon: File, action: handleDocx },
+      { label: "EPUB",           ext: ".epub", icon: BookOpen, action: handleEpub, note: "For proofing & ARC copies" },
+
     { label: "PDF", ext: ".pdf", icon: FileText, action: handlePdf },
     { label: "Plain Text", ext: ".txt", icon: FileText, action: handleTxt },
   ];
@@ -381,45 +410,31 @@ export default function ExportMenu({
                 Export As
               </span>
             </div>
-            {ITEMS.map(({ label, ext, icon: Icon, action }) => (
-              <button
-                key={ext}
-                onClick={() => void action()}
-                className="w-full flex items-center gap-3 text-left transition-colors"
-                style={{
-                  padding: "10px 12px",
-                  color: "var(--text-secondary)",
-                  fontSize: "13px",
-                  fontFamily: "Inter",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  width: "100%",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "var(--bg-elevated)";
-                  (e.currentTarget as HTMLElement).style.color =
-                    "var(--text-primary)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "transparent";
-                  (e.currentTarget as HTMLElement).style.color =
-                    "var(--text-secondary)";
-                }}
-              >
-                <Icon
-                  className="w-3.5 h-3.5 flex-shrink-0"
-                  style={{ color: "var(--text-dim)" }}
-                />
-                <span style={{ flex: 1 }}>{label}</span>
-                <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-                  {ext}
-                </span>
-              </button>
-            ))}
-          </div>,
+           {ITEMS.map(({ label, ext, icon: Icon, action, note }) => (
+  <button
+    key={ext}
+    onClick={() => void action()}
+    className="w-full flex items-center gap-3 text-left transition-colors"
+    style={{ padding: "10px 12px", color: "var(--text-secondary)", fontSize: "13px", fontFamily: "var(--font-inter)", background: "transparent", border: "none", cursor: "pointer" }}
+    onMouseEnter={(e) => {
+      (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
+      (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+    }}
+    onMouseLeave={(e) => {
+      (e.currentTarget as HTMLElement).style.background = "transparent";
+      (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+    }}>
+    <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--text-dim)" }} />
+    <div style={{ flex: 1 }}>
+      <span style={{ display: "block" }}>{label}</span>
+      {note && (
+        <span style={{ fontSize: "10px", color: "var(--text-dim)", fontStyle: "italic" }}>{note}</span>
+      )}
+    </div>
+    <span style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "var(--font-inter)" }}>{ext}</span>
+  </button>
+))}
+\          </div>,
           document.body,
         )}
     </>
