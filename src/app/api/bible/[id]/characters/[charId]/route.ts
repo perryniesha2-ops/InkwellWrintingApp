@@ -8,31 +8,54 @@ type RouteParams = { params: Promise<{ id: string; charId: string }> };
 
 export async function PATCH(req: Request, { params }: RouteParams) {
   const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { charId } = await params;
-  const body = await req.json();
+  try {
+    const { charId } = await params;
+    const body = await req.json();
 
-  const [char] = await db
-    .update(characters)
-    .set(body)
-    .where(and(eq(characters.id, charId), eq(characters.userId, userId)))
-    .returning();
+    // Remove any fields that don't exist in the schema
+    const {
+      id, bibleId, userId: _, createdAt,
+      ...updateData
+    } = body;
 
-  return NextResponse.json(char);
+
+    const [char] = await db
+      .update(characters)
+      .set(updateData)
+      .where(and(eq(characters.id, charId), eq(characters.userId, userId)))
+      .returning();
+
+    if (!char) {
+      return NextResponse.json({ error: "Character not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(char);
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Failed to update character", detail: String(err) },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(req: Request, { params }: RouteParams) {
   const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { charId } = await params;
+  try {
+    const { charId } = await params;
 
-  await db
-    .delete(characters)
-    .where(and(eq(characters.id, charId), eq(characters.userId, userId)));
+    await db
+      .delete(characters)
+      .where(and(eq(characters.id, charId), eq(characters.userId, userId)));
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Failed to delete character", detail: String(err) },
+      { status: 500 }
+    );
+  }
 }
