@@ -507,3 +507,13 @@
   content: " ";
   display: inline-block;
 }
+
+/* Hide native file input text in Uploadthing buttons */
+.uploadthing-button input[type="file"] {
+  display: none;
+}
+
+/* Also hide the ::after content that shows filename */
+[data-ut-element="button"]::after {
+  display: none !important;
+}

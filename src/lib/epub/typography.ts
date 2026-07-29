@@ -1,10 +1,12 @@
 export interface EpubSettings {
-  chapterStyle: "classic" | "minimal" | "ornate" | "modern" | "dark" | "contemporary" |"elegant" | "bold" | "romantic" | "vintage" | "thriller" | "literary";
+  chapterStyle:
+    | "classic" | "minimal" | "ornate" | "modern" | "dark" | "contemporary"
+    | "elegant" | "bold" | "vintage" | "romantic" | "thriller" | "literary";
   bodyFont: "palatino" | "garamond" | "crimson" | "baskerville" | "source-serif";
   sceneBreak: "dots" | "stars" | "fleuron" | "dingbat" | "line" | "diamond";
   chapterNumbers: "word" | "arabic" | "roman" | "none";
   dropCap: boolean;
-  lineHeight: string;
+  lineHeight: "tight" | "normal" | "loose";
   fontSize: "small" | "medium" | "large";
 }
 
@@ -355,9 +357,184 @@ blockquote {
   padding-left: 1em;
 }
 
+// Add to the return string inside generateCSS():
+
+/* Elegant */
+.chapter-heading.elegant {
+  text-align: center;
+  padding-top: 15%;
+  margin-bottom: 3em;
+  page-break-before: always;
+}
+.chapter-heading.elegant .elegant-top-line,
+.chapter-heading.elegant .elegant-bottom-line {
+  width: 6em;
+  margin: 0.75em auto;
+  border: none;
+  height: 0;
+  border-top: 1px solid #1a1a1a;
+}
+.chapter-heading.elegant .chapter-label {
+  font-size: 0.7em;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  text-indent: 0;
+  color: #555;
+}
+.chapter-heading.elegant .chapter-title {
+  font-size: 1.5em;
+  font-style: italic;
+  font-weight: normal;
+  letter-spacing: 0.05em;
+}
+
+/* Bold */
+.chapter-heading.bold-style {
+  text-align: center;
+  padding-top: 18%;
+  margin-bottom: 3em;
+  page-break-before: always;
+  border-top: 3px solid #1a1a1a;
+  padding-top: 1.5em;
+  margin-top: 15%;
+}
+.chapter-heading.bold-style .chapter-number {
+  font-size: 0.7em;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  text-indent: 0;
+  color: #555;
+  margin-bottom: 0.25em;
+}
+.chapter-heading.bold-style .chapter-title {
+  font-size: 2em;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+/* Vintage */
+.chapter-heading.vintage {
+  text-align: center;
+  padding-top: 15%;
+  margin-bottom: 3em;
+  page-break-before: always;
+}
+.chapter-heading.vintage .vintage-ornament {
+  font-size: 1em;
+  color: #555;
+  letter-spacing: 0.2em;
+  text-indent: 0;
+  margin: 0.5em 0;
+}
+.chapter-heading.vintage .chapter-label {
+  font-size: 0.75em;
+  letter-spacing: 0.1em;
+  text-indent: 0;
+  font-style: italic;
+  color: #555;
+  margin-bottom: 0.5em;
+}
+.chapter-heading.vintage .chapter-title {
+  font-size: 1.6em;
+  font-weight: bold;
+}
+
+/* Romantic */
+.chapter-heading.romantic {
+  text-align: center;
+  padding-top: 15%;
+  margin-bottom: 3em;
+  page-break-before: always;
+}
+.chapter-heading.romantic .chapter-title {
+  font-size: 1.8em;
+  font-style: italic;
+  font-weight: normal;
+  margin-bottom: 0.25em;
+}
+.chapter-heading.romantic .chapter-label {
+  font-size: 0.7em;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  text-indent: 0;
+  color: #666;
+  margin-bottom: 0.75em;
+}
+.chapter-heading.romantic .romantic-flourish {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  margin-top: 0.75em;
+}
+.chapter-heading.romantic .romantic-line {
+  width: 3em;
+  height: 1px;
+  background: #1a1a1a;
+  display: inline-block;
+}
+.chapter-heading.romantic .romantic-flourish span {
+  font-size: 0.6em;
+  color: #555;
+}
+
+/* Thriller */
+.chapter-heading.thriller {
+  padding-top: 20%;
+  margin-bottom: 3em;
+  page-break-before: always;
+}
+.chapter-heading.thriller .thriller-bar {
+  width: 100%;
+  height: 4px;
+  background: #1a1a1a;
+  margin-bottom: 1em;
+}
+.chapter-heading.thriller .chapter-number {
+  font-size: 0.7em;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  text-indent: 0;
+  color: #555;
+  margin-bottom: 0.25em;
+}
+.chapter-heading.thriller .chapter-title {
+  font-size: 1.6em;
+  font-weight: 900;
+  text-align: left;
+  letter-spacing: -0.02em;
+}
+
+/* Literary */
+.chapter-heading.literary {
+  padding-top: 18%;
+  margin-bottom: 4em;
+  page-break-before: always;
+  text-align: left;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 1.5em;
+}
+.chapter-heading.literary .chapter-label {
+  font-size: 0.65em;
+  letter-spacing: 0.5em;
+  text-indent: 0;
+  color: #888;
+  margin-bottom: 0.5em;
+}
+.chapter-heading.literary .chapter-title {
+  font-size: 1.5em;
+  font-weight: normal;
+  font-style: italic;
+  text-align: left;
+  letter-spacing: 0.02em;
+}
+
 /* ── Bold / Italic ── */
 strong { font-weight: bold; }
 em { font-style: italic; }
+
+
 
 /* ── Page breaks ── */
 .page-break { page-break-after: always; }
@@ -424,6 +601,58 @@ export function generateChapterHeading(
   ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
 </div>`;
 
+case "elegant":
+  return `
+<div class="chapter-heading elegant">
+  <div class="elegant-top-line"></div>
+  ${numStr ? `<p class="chapter-label">${numStr}</p>` : ""}
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+  <div class="elegant-bottom-line"></div>
+</div>`;
+
+case "bold":
+  return `
+<div class="chapter-heading bold-style">
+  ${numStr ? `<p class="chapter-number">${numStr}</p>` : ""}
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+</div>`;
+
+case "vintage":
+  return `
+<div class="chapter-heading vintage">
+  <p class="vintage-ornament">— ${sceneChar} —</p>
+  ${numStr ? `<p class="chapter-label">Chapter the ${numStr}</p>` : ""}
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+  <p class="vintage-ornament">— ${sceneChar} —</p>
+</div>`;
+
+case "romantic":
+  return `
+<div class="chapter-heading romantic">
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+  ${numStr ? `<p class="chapter-label">${numStr}</p>` : ""}
+  <div class="romantic-flourish">
+    <span>✦</span>
+    <div class="romantic-line"></div>
+    <span>✦</span>
+  </div>
+</div>`;
+
+case "thriller":
+  return `
+<div class="chapter-heading thriller">
+  <div class="thriller-bar"></div>
+  ${numStr ? `<p class="chapter-number">${numStr}</p>` : ""}
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+</div>`;
+
+case "literary":
+  return `
+<div class="chapter-heading literary">
+  ${numStr ? `<p class="chapter-label">${numStr.toUpperCase()}</p>` : ""}
+  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+</div>`;
+
     default:
       return `<h1>${chapterTitle}</h1>`;
   }
@@ -437,18 +666,27 @@ export function processContent(html: string, settings: EpubSettings): string {
   const sceneBreakChar = SCENE_BREAK_CHARS[settings.sceneBreak];
 
   return html
+    // Fix br inside p — convert to paragraph breaks instead
+    .replace(/<p([^>]*)>(.*?)<br\s*\/?>(.*?)<\/p>/gi, (_, attrs, before, after) => {
+      const parts = [before, after].filter((p) => p.trim());
+      return parts.map((p) => `<p${attrs}>${p}</p>`).join("\n");
+    })
+    // Remove standalone br tags
+    .replace(/<br\s*\/?>/gi, "</p><p>")
     // Scene breaks
     .replace(/<hr\s*\/?>/gi, `<p class="scene-break">${sceneBreakChar}</p>`)
-    // Smart quotes (if not already)
-    .replace(/(\s|^)"(\S)/g, '$1\u201c$2')
-    .replace(/(\S)"(\s|$|[.,!?;:])/g, '$1\u201d$2')
-    .replace(/(\s|^)'(\S)/g, '$1\u2018$2')
-    .replace(/(\S)'(\s|$|[.,!?;:])/g, '$1\u2019$2')
+    // Smart quotes
+    .replace(/(\s|^)"(\S)/g, "$1\u201c$2")
+    .replace(/(\S)"(\s|$|[.,!?;:])/g, "$1\u201d$2")
+    .replace(/(\s|^)'(\S)/g, "$1\u2018$2")
+    .replace(/(\S)'(\s|$|[.,!?;:])/g, "$1\u2019$2")
     // Em dashes
-    .replace(/--/g, '\u2014')
+    .replace(/--/g, "\u2014")
     // Ellipsis
-    .replace(/\.\.\./g, '\u2026')
+    .replace(/\.\.\./g, "\u2026")
     // Clean empty paragraphs
     .replace(/<p>\s*<\/p>/g, '<p class="no-indent">&nbsp;</p>')
+    // Fix any remaining br tags inside p
+    .replace(/<p([^>]*)>\s*<br\s*\/?>\s*<\/p>/gi, '<p$1>&nbsp;</p>')
     .trim();
 }

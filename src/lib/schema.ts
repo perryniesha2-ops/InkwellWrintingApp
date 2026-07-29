@@ -17,6 +17,7 @@ export const documents = pgTable(
     content: text("content").notNull().default(""),
     genre: text("genre"),
     wordCount: integer("word_count").default(0),
+    coverImage: text("cover_image"),   
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -200,3 +201,4 @@ export const chatMessages = pgTable(
     sessionIdx: index("chat_messages_session_id_idx").on(t.sessionId),
   }),
 );
+

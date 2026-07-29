@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { AnimatePresence, motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   Feather,
   Save,
@@ -16,6 +17,7 @@ import {
   SpellCheck,
   BarChart2,
   MessageSquare,
+  ImagePlus,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -66,6 +68,10 @@ const SceneIllustrator = dynamic(
   () => import("@/components/editor/SceneIllustrator"),
   { ssr: false },
 );
+const CoverUpload = dynamic(
+  () => import("@/components/editor/CoverUpload"),
+  { ssr: false }
+);
 
 interface Document {
   id: string;
@@ -73,6 +79,7 @@ interface Document {
   content: string;
   genre: string | null;
   wordCount: number | null;
+   coverImage: string | null;
 }
 
 function ActionButton({
@@ -164,6 +171,8 @@ interface EditorPageProps {
   id: string;
 }
 
+
+
 export function EditorPage({ id }: EditorPageProps) {
   const router = useRouter();
   const { user } = useUser();
@@ -196,6 +205,12 @@ export function EditorPage({ id }: EditorPageProps) {
   const genreRef = useRef(genre);
   const docRef = useRef(doc);
 
+  const [coverOpen, setCoverOpen] = useState(false);
+ const [coverImage, setCoverImage] = useState<string | null>(null);
+
+ const coverButtonRef = useRef<HTMLButtonElement>(null);
+const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
+
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
@@ -208,6 +223,7 @@ export function EditorPage({ id }: EditorPageProps) {
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
+  
 
   // Load document
   useEffect(() => {
@@ -226,6 +242,7 @@ export function EditorPage({ id }: EditorPageProps) {
         setTitle(data.title);
         setContent(data.content);
         setGenre(data.genre ?? undefined);
+        setCoverImage(data.coverImage ?? null);
         setLoading(false);
       });
   }, [id, user, router]);
@@ -279,6 +296,8 @@ export function EditorPage({ id }: EditorPageProps) {
       setSaving(false);
     }
   }, [user, router]);
+
+ 
 
   // Auto-save
   useEffect(() => {
@@ -533,6 +552,90 @@ export function EditorPage({ id }: EditorPageProps) {
                 <span>Bible</span>
               </Link>
             )}
+
+<div style={{ position: "relative" }} data-cover-popover>
+ <button
+  onClick={() => {
+    if (coverButtonRef.current) {
+      const rect = coverButtonRef.current.getBoundingClientRect();
+      setCoverButtonPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setCoverOpen((o) => !o);
+  }}
+  ref={coverButtonRef}
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "12px",
+    fontFamily: "var(--font-inter)",
+    color: "var(--text-muted)",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    flexShrink: 0,
+    transition: "color 0.15s",
+    whiteSpace: "nowrap",        // ← prevents wrapping
+    lineHeight: "1",             // ← keeps everything on one line
+    padding: "0",
+  }}
+  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
+  {coverImage ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={coverImage}
+      alt="Cover"
+      style={{
+        width: "14px",
+        height: "20px",
+        objectFit: "cover",
+        border: "1px solid var(--border-color)",
+        display: "inline-block",   // ← inline not block
+        verticalAlign: "middle",   // ← aligns with text
+        flexShrink: 0,
+      }}
+    />
+  ) : (
+    <ImagePlus style={{ width: "14px", height: "14px", flexShrink: 0 }} />
+  )}
+  <span>Cover</span>
+</button>
+</div>
+
+{/* Portal dropdown — renders on document.body */}
+{coverOpen && doc && typeof window !== "undefined" && createPortal(
+  <div
+    style={{
+      position: "fixed",
+      top: coverButtonPos.top,
+      right: coverButtonPos.right,
+      background: "var(--bg-surface)",
+      border: "1px solid var(--border-color)",
+      padding: "16px",
+      zIndex: 9999,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+      minWidth: "160px",
+    }}>
+    <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "12px" }}>
+      Book Cover
+    </p>
+    {CoverUpload && (
+      <CoverUpload
+        documentId={doc.id}
+        currentCover={coverImage}
+        onUpdate={(url) => {
+          setCoverImage(url);
+          setCoverOpen(false);
+        }}
+      />
+    )}
+  </div>,
+  document.body
+)}
 
             {ExportMenu && (
               <ExportMenu
