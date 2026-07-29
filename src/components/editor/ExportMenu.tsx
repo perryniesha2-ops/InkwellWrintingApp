@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Download, FileText, File, Loader2, BookOpen } from "lucide-react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
+
 
 interface DocumentSection {
   type: string;
@@ -16,6 +18,10 @@ interface ExportMenuProps {
   genre?: string;
   documentId?: string;
 }
+const EpubExportModal = dynamic(
+  () => import("@/components/editor/EpubExportModal"),
+  { ssr: false }
+);
 
 export default function ExportMenu({
   title,
@@ -27,6 +33,8 @@ export default function ExportMenu({
   const [exporting, setExporting] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [epubModalOpen, setEpubModalOpen] = useState(false);
+
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +58,8 @@ export default function ExportMenu({
     }
     setOpen((o) => !o);
   };
+
+  
 
   const getSections = async (): Promise<DocumentSection[]> => {
     if (!documentId) return [];
@@ -334,8 +344,7 @@ const handleEpub = async () => {
 
   const ITEMS = [
     { label: "Word Document", ext: ".docx", icon: File, action: handleDocx },
-      { label: "EPUB",           ext: ".epub", icon: BookOpen, action: handleEpub, note: "For proofing & ARC copies" },
-
+  { label: "EPUB",          ext: ".epub", icon: BookOpen, action: () => { setOpen(false); setEpubModalOpen(true); }, note: "For proofing & ARC copies" },
     { label: "PDF", ext: ".pdf", icon: FileText, action: handlePdf },
     { label: "Plain Text", ext: ".txt", icon: FileText, action: handleTxt },
   ];
@@ -437,6 +446,15 @@ const handleEpub = async () => {
 \          </div>,
           document.body,
         )}
-    </>
-  );
+        {/* EPUB modal */}
+    {epubModalOpen && documentId && (
+      <EpubExportModal
+        isOpen={epubModalOpen}
+        onClose={() => setEpubModalOpen(false)}
+        documentId={documentId}
+        title={title}
+      />
+    )}
+  </>
+);
 }
