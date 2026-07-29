@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useUser } from "@/hooks/useUser";
 import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import {

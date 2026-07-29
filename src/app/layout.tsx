@@ -1,18 +1,25 @@
 import type { Metadata } from "next";
-import { Inter, DM_Sans, Cormorant_Garamond, Geist } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
+import { Inter, DM_Sans, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600"],
   style: ["normal", "italic"],
   variable: "--font-cormorant",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,14 +33,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
-      <html lang="en" className={cn("font-sans", geist.variable)}>
-        <body
-          className={`${inter.variable} ${dmSans.variable} ${cormorant.variable}`}
-        >
-          {children}
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const theme = localStorage.getItem('prosr-theme');
+                if (theme && theme !== 'default') {
+                  document.documentElement.setAttribute('data-theme', theme);
+                }
+              } catch {}
+            `,
+          }}
+        />
+      </head>
+      <body
+        className={`${inter.variable} ${dmSans.variable} ${cormorant.variable}`}
+        suppressHydrationWarning>
+        {children}
+      </body>
+    </html>
   );
 }

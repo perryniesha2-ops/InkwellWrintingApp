@@ -517,3 +517,16 @@
 [data-ut-element="button"]::after {
   display: none !important;
 }
+
+/* Editor prose paragraph spacing */
+.editor-prose p {
+  margin-bottom: 0.75em;  /* ← was likely 1.6em or larger */
+  min-height: 1em;
+  line-height: 1.8;
+}
+
+/* Empty paragraphs shouldn't be huge */
+.editor-prose p:empty,
+.editor-prose p.is-empty {
+  margin-bottom: 0.5em;
+}

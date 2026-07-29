@@ -1,26 +1,26 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { bibleNotes } from "@/lib/schema";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: RouteParams) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: bibleId } = await params;
   const body = await req.json();
 
-  const [note] = await db
-    .insert(bibleNotes)
-    .values({
-      bibleId,
-      userId,
+  const { data: note, error } = await supabase
+    .from("bible_notes")
+    .insert({
+      bible_id: bibleId,
+      user_id: user.id,
       title: body.title ?? "New Note",
     })
-    .returning();
+    .select()
+    .single();
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(note);
 }

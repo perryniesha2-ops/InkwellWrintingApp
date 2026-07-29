@@ -1,7 +1,8 @@
 "use client";
 
+import { createClient } from "@/lib/supabase/client";
 import { useState, useEffect, useRef } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser } from "@/hooks/useUser";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,7 +21,6 @@ import {
   ChevronUp,
   X,
 } from "lucide-react";
-import { UploadButton } from "@/lib/uploadthing";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -538,22 +538,50 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   };
 
   const handleImageUploadComplete = async (
-    res: { url: string }[],
-    entry: WorldEntry,
-  ) => {
-    const newUrls = res.map((r) => r.url);
+  files: FileList,
+  entry: WorldEntry
+) => {
+  const supabase = createClient();
+  const newUrls: string[] = [];
+
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith("image/")) continue;
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`${file.name} is too large. Max 5MB.`);
+      continue;
+    }
+
+    const ext = file.name.split(".").pop();
+    const path = `${user?.id}/${entry.id}/${crypto.randomUUID()}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from("world-images")
+      .upload(path, file, { cacheControl: "3600", upsert: false });
+
+    if (error) {
+      console.error("Upload error:", error);
+      continue;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("world-images")
+      .getPublicUrl(data.path);
+
+    newUrls.push(publicUrl);
+  }
+
+  if (newUrls.length > 0) {
     const newImages = [...(entry.images ?? []), ...newUrls];
     const updated = { ...entry, images: newImages };
     setActiveWorld(updated);
-    setWorldEntries((prev) =>
-      prev.map((w) => (w.id === entry.id ? updated : w)),
-    );
+    setWorldEntries((prev) => prev.map((w) => w.id === entry.id ? updated : w));
     await fetch(`/api/bible/${bible?.id}/world/${entry.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ images: newImages }),
     });
-  };
+  }
+};
 
   const handleDeleteImage = async (entry: WorldEntry, url: string) => {
     const newImages = (entry.images ?? []).filter((img) => img !== url);
@@ -1943,32 +1971,41 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                     ))}
                   </div>
                 )}
-                <UploadButton
-                  endpoint="worldImageUploader"
-                  onClientUploadComplete={(res) =>
-                    void handleImageUploadComplete(res, activeWorld)
-                  }
-                  onUploadError={(error) => {
-                    console.error("Upload error:", error);
-                    alert("Upload failed. Please try again.");
-                  }}
-                  appearance={{
-                    button: {
-                      background: "var(--bg-elevated)",
-                      color: "var(--text-muted)",
-                      border: "1px dashed var(--border-color)",
-                      borderRadius: "0",
-                      fontSize: "12px",
-                      fontFamily: "var(--font-inter)",
-                      width: "100%",
-                      padding: "10px",
-                    },
-                    allowedContent: {
-                      color: "var(--text-dim)",
-                      fontSize: "10px",
-                    },
-                  }}
-                />
+               {/* Replace UploadButton with: */}
+<label
+  style={{
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: "6px", padding: "10px", width: "100%",
+    background: "var(--bg-elevated)",
+    border: "1px dashed var(--border-color)",
+    cursor: "pointer", fontSize: "12px",
+    fontFamily: "var(--font-inter)",
+    color: "var(--text-muted)",
+    transition: "all 0.15s",
+    boxSizing: "border-box" as const,
+  }}
+  onMouseEnter={(e) => {
+    (e.currentTarget as HTMLElement).style.borderColor = "var(--gold-border)";
+    (e.currentTarget as HTMLElement).style.color = "var(--gold-primary)";
+  }}
+  onMouseLeave={(e) => {
+    (e.currentTarget as HTMLElement).style.borderColor = "var(--border-color)";
+    (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+  }}>
+  <Plus style={{ width: "13px", height: "13px" }} />
+  Upload Images
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    style={{ display: "none" }}
+    onChange={(e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        void handleImageUploadComplete(e.target.files, activeWorld);
+      }
+    }}
+  />
+</label>
               </Section>
             </div>
           )}

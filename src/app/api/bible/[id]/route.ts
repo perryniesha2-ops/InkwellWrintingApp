@@ -1,59 +1,60 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import {
-  storyBibles,
-  characters,
-  outlineSections,
-  worldEntries,
-  bibleNotes,
-  documents,
-} from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, { params }: RouteParams) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   // Get or create bible
-  let [bible] = await db
-    .select()
-    .from(storyBibles)
-    .where(eq(storyBibles.documentId, id));
+  let { data: bible } = await supabase
+    .from("story_bibles")
+    .select("*")
+    .eq("document_id", id)
+    .single();
 
   if (!bible) {
-    [bible] = await db
-      .insert(storyBibles)
-      .values({ documentId: id, userId })
-      .returning();
+    const { data: newBible } = await supabase
+      .from("story_bibles")
+      .insert({ document_id: id, user_id: user.id })
+      .select()
+      .single();
+    bible = newBible;
   }
 
-  const [doc] = await db
-    .select({ title: documents.title })
-    .from(documents)
-    .where(and(eq(documents.id, id), eq(documents.userId, userId)));
+  if (!bible) return NextResponse.json({ error: "Failed to create bible" }, { status: 500 });
 
-  const [chars, outline, world, notes] = await Promise.all([
-    db.select().from(characters).where(eq(characters.bibleId, bible.id)),
-    db
-      .select()
-      .from(outlineSections)
-      .where(eq(outlineSections.bibleId, bible.id)),
-    db.select().from(worldEntries).where(eq(worldEntries.bibleId, bible.id)),
-    db.select().from(bibleNotes).where(eq(bibleNotes.bibleId, bible.id)),
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("title")
+    .eq("id", id)
+    .single();
+
+  const [
+    { data: chars },
+    { data: outline },
+    { data: world },
+    { data: notes },
+    { data: timeline },
+  ] = await Promise.all([
+    supabase.from("characters").select("*").eq("bible_id", bible.id),
+    supabase.from("outline_sections").select("*").eq("bible_id", bible.id).order("order_index"),
+    supabase.from("world_entries").select("*").eq("bible_id", bible.id),
+    supabase.from("bible_notes").select("*").eq("bible_id", bible.id),
+    supabase.from("timeline_events").select("*").eq("bible_id", bible.id).order("order_index"),
   ]);
 
   return NextResponse.json({
     bible,
-    characters: chars,
-    outline,
-    world,
-    notes,
+    characters: chars ?? [],
+    outline: outline ?? [],
+    world: world ?? [],
+    notes: notes ?? [],
+    timeline: timeline ?? [],
     docTitle: doc?.title ?? "Your Story",
   });
 }

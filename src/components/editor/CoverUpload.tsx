@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { X, Loader2, Upload, ImagePlus } from "lucide-react";
-import { UploadButton } from "@/lib/uploadthing";
+import { X, Loader2, Upload, ImagePlus, Plus } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 interface CoverUploadProps {
   documentId: string;
@@ -15,19 +15,19 @@ export default function CoverUpload({ documentId, currentCover, onUpdate }: Cove
   const [removing, setRemoving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const handleUploadComplete = async (res: { url: string }[]) => {
-    const url = res[0]?.url;
-    if (!url) return;
+  const handleUploadComplete = async (files: FileList) => {
+     const supabase = createClient();
+  const newUrls: string[] = [];
     setUploading(false);
 
     await fetch(`/api/documents/${documentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coverImage: url }),
+      body: JSON.stringify({ coverImage: newUrls }),
     });
 
-    setCover(url);
-    onUpdate(url);
+    setCover(newUrls[0]);
+    onUpdate(newUrls[0]);
   };
 
   const handleRemove = async () => {
@@ -142,51 +142,40 @@ export default function CoverUpload({ documentId, currentCover, onUpdate }: Cove
             </span>
           </div>
         )}
-        <UploadButton
-          endpoint="coverImageUploader"
-          onUploadBegin={() => setUploading(true)}
-      onClientUploadComplete={(res) => {
-  const url = res[0]?.url;
-  if (!url) {
-    alert("Upload completed but no URL returned.");
-    return;
-  }
-  void handleUploadComplete(res);
-}}
-onUploadError={(err) => {
-  console.error("Upload error:", err);
-  // Check if it's just the callback error — file may still have uploaded
-  if (err.message.includes("callback")) {
-    console.log("Callback failed but upload may have succeeded");
-    return;
-  }
-  alert("Upload failed. Please try again.");
-}}
-         appearance={{
-  button: {
-    background: cover ? "var(--bg-elevated)" : "var(--gold-primary)",
-    color: cover ? "var(--text-muted)" : "var(--bg-primary)",
-    border: cover ? "1px solid var(--border-color)" : "none",
-    borderRadius: "0",
-    fontSize: "12px",
+      <label
+  style={{
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: "6px", padding: "10px", width: "100%",
+    background: "var(--bg-elevated)",
+    border: "1px dashed var(--border-color)",
+    cursor: "pointer", fontSize: "12px",
     fontFamily: "var(--font-inter)",
-    fontWeight: "600",
-    width: "160px",
-    padding: "8px",
-  },
-  allowedContent: { display: "none" },
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "0",
-    width: "160px",
-  },
-}}
-          content={{
-            button: cover ? "Change Cover" : "Upload Cover",
-          }}
-        />
+    color: "var(--text-muted)",
+    transition: "all 0.15s",
+    boxSizing: "border-box" as const,
+  }}
+  onMouseEnter={(e) => {
+    (e.currentTarget as HTMLElement).style.borderColor = "var(--gold-border)";
+    (e.currentTarget as HTMLElement).style.color = "var(--gold-primary)";
+  }}
+  onMouseLeave={(e) => {
+    (e.currentTarget as HTMLElement).style.borderColor = "var(--border-color)";
+    (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+  }}>
+  <Plus style={{ width: "13px", height: "13px" }} />
+  Upload Images
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    style={{ display: "none" }}
+    onChange={(e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        void handleUploadComplete(e.target.files);
+      }
+    }}
+  />
+</label>
       </div>
 
       {/* Info */}

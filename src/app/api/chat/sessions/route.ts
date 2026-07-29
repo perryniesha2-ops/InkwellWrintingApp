@@ -1,47 +1,42 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { chatSessions } from "@/lib/schema";
-import { eq, and, desc } from "drizzle-orm";
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json([], { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json([], { status: 401 });
 
   const url = new URL(req.url);
   const documentId = url.searchParams.get("documentId");
   if (!documentId) return NextResponse.json([]);
 
-  const sessions = await db
-    .select()
-    .from(chatSessions)
-    .where(
-      and(
-        eq(chatSessions.documentId, documentId),
-        eq(chatSessions.userId, userId),
-      ),
-    )
-    .orderBy(desc(chatSessions.updatedAt));
+  const { data: sessions } = await supabase
+    .from("chat_sessions")
+    .select("*")
+    .eq("document_id", documentId)
+    .order("updated_at", { ascending: false });
 
-  return NextResponse.json(sessions);
+  return NextResponse.json(sessions ?? []);
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { documentId, title } = await req.json();
 
-  const [session] = await db
-    .insert(chatSessions)
-    .values({
-      documentId,
-      userId,
+  const { data: session, error } = await supabase
+    .from("chat_sessions")
+    .insert({
+      document_id: documentId,
+      user_id: user.id,
       title: title ?? "New Chat",
-      messageCount: 0,
+      message_count: 0,
     })
-    .returning();
+    .select()
+    .single();
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(session);
 }

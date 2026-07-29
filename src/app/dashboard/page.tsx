@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -9,19 +8,20 @@ import {
   Feather, Plus, Clock, Loader2, LogOut,
   BookMarked, ArrowRight, Trash2,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useUser } from "@/hooks/useUser";
 
 interface Document {
   id: string;
   title: string;
   genre: string | null;
-  wordCount: number | null;
-  updatedAt: string | null;
-  coverImage: string | null;
+  word_count: number | null;
+  updated_at: string | null;
+  cover_image: string | null;
 }
 
 export default function DashboardPage() {
   const { user } = useUser();
-  const { signOut } = useClerk();
   const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +43,13 @@ export default function DashboardPage() {
         setLoading(false);
       });
   }, [user]);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/auth");
+    router.refresh();
+  };
 
   const deleteDocument = async (docId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -86,14 +93,15 @@ export default function DashboardPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <span style={{ fontSize: "12px", color: "var(--text-muted)", fontFamily: "var(--font-inter)" }}>
-              {user?.emailAddresses[0]?.emailAddress}
+              {user?.email}
             </span>
             <button
-              onClick={() => void signOut(() => router.push("/"))}
-              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex" }}
+              onClick={() => void handleSignOut()}
+              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontFamily: "var(--font-inter)", transition: "color 0.15s" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
-              <LogOut style={{ width: "16px", height: "16px" }} />
+              <LogOut style={{ width: "14px", height: "14px" }} />
+              Sign out
             </button>
           </div>
         </div>
@@ -115,7 +123,7 @@ export default function DashboardPage() {
             </h1>
           </div>
           <button
-            onClick={() => router.push("/new")}
+            onClick={() => router.push("/onboarding")}
             className="btn-gold"
             style={{ padding: "10px 20px", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer", flexShrink: 0 }}>
             <Plus style={{ width: "16px", height: "16px" }} />
@@ -143,7 +151,7 @@ export default function DashboardPage() {
               Every great story starts with a blank page.
             </p>
             <button
-              onClick={() => router.push("/new")}
+              onClick={() => router.push("/onboarding")}
               className="btn-gold"
               style={{ padding: "10px 24px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer" }}>
               <Plus style={{ width: "14px", height: "14px" }} />
@@ -176,10 +184,10 @@ export default function DashboardPage() {
 
                     {/* Cover thumbnail */}
                     <div style={{ width: "32px", height: "48px", flexShrink: 0 }}>
-                      {doc.coverImage ? (
+                      {doc.cover_image ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={doc.coverImage}
+                          src={doc.cover_image}
                           alt=""
                           style={{ width: "32px", height: "48px", objectFit: "cover", border: "1px solid var(--border-color)", display: "block" }}
                         />
@@ -204,14 +212,14 @@ export default function DashboardPage() {
 
                     {/* Words */}
                     <span style={{ fontSize: "13px", color: "var(--text-muted)", fontFamily: "var(--font-inter)" }}>
-                      {(doc.wordCount ?? 0).toLocaleString()}
+                      {(doc.word_count ?? 0).toLocaleString()}
                     </span>
 
                     {/* Updated */}
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <Clock style={{ width: "11px", height: "11px", color: "var(--text-dim)" }} />
                       <span style={{ fontSize: "12px", color: "var(--text-muted)", fontFamily: "var(--font-inter)" }}>
-                        {formatDate(doc.updatedAt)}
+                        {formatDate(doc.updated_at)}
                       </span>
                     </div>
 
@@ -260,7 +268,7 @@ export default function DashboardPage() {
 
             {/* New document row */}
             <button
-              onClick={() => router.push("/new")}
+              onClick={() => router.push("/onboarding")}
               style={{ width: "100%", padding: "14px 0", display: "flex", alignItems: "center", gap: "10px", background: "transparent", border: "none", borderBottom: "1px solid var(--border-color)", cursor: "pointer", transition: "background 0.1s" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>

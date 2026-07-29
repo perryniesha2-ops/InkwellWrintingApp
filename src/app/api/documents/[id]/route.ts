@@ -1,60 +1,63 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { documents } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, { params }: RouteParams) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
-  const [doc] = await db
-    .select()
-    .from(documents)
-    .where(and(eq(documents.id, id), eq(documents.userId, userId)));
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("id", id)
+    .single();
 
-  if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (error || !doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(doc);
 }
 
 export async function PATCH(req: Request, { params }: RouteParams) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json() as Record<string, unknown>;
 
-  const [doc] = await db
-    .update(documents)
-    .set({
-      title: body.title,
-      content: body.content,
-      genre: body.genre ?? null,
-      wordCount: body.wordCount ?? 0,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(documents.id, id), eq(documents.userId, userId)))
-    .returning();
+  const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if ("title" in body)      updateData.title       = body.title;
+  if ("content" in body)    updateData.content     = body.content;
+  if ("genre" in body)      updateData.genre       = body.genre ?? null;
+  if ("wordCount" in body)  updateData.word_count  = body.wordCount ?? 0;
+  if ("coverImage" in body) updateData.cover_image = body.coverImage ?? null;
 
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .update(updateData)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(doc);
 }
 
 export async function DELETE(req: Request, { params }: RouteParams) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
-  await db
-    .delete(documents)
-    .where(and(eq(documents.id, id), eq(documents.userId, userId)));
+  const { error } = await supabase
+    .from("documents")
+    .delete()
+    .eq("id", id);
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

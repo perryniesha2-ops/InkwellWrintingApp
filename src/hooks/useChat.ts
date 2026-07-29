@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser } from "@/hooks/useUser";
 
 interface Message {
   role: "user" | "assistant";

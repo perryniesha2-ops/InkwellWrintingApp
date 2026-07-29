@@ -1,45 +1,39 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { documents } from "@/lib/schema";
-import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const docs = await db
-    .select({
-      id: documents.id,
-      title: documents.title,
-      genre: documents.genre,
-      wordCount: documents.wordCount,
-      updatedAt: documents.updatedAt,
-    })
-    .from(documents)
-    .where(eq(documents.userId, userId))
-    .orderBy(desc(documents.updatedAt));
+  const { data: docs, error } = await supabase
+    .from("documents")
+    .select("id, title, genre, word_count, updated_at, cover_image")
+    .order("updated_at", { ascending: false });
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(docs);
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const [doc] = await db
-    .insert(documents)
-    .values({
-      userId,
+
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .insert({
+      user_id: user.id,
       title: body.title ?? "Untitled",
       content: body.content ?? "",
       genre: body.genre ?? null,
-      wordCount: 0,
+      word_count: 0,
     })
-    .returning();
+    .select()
+    .single();
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(doc);
 }

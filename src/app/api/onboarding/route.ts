@@ -1,10 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import {
-  documents, storyBibles, characters,
-  outlineSections, worldEntries,
-} from "@/lib/schema";
 
 interface OnboardingCharacter {
   name: string;
@@ -41,70 +36,103 @@ interface OnboardingBody {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json() as OnboardingBody;
 
   // 1. Create document
-  const [doc] = await db.insert(documents).values({
-    userId,
-    title: body.title || "Untitled",
-    content: "",
-    genre: body.genre || null,
-    wordCount: 0,
-  }).returning();
+  const { data: doc, error: docError } = await supabase
+    .from("documents")
+    .insert({
+      user_id: user.id,
+      title: body.title || "Untitled",
+      content: "",
+      genre: body.genre || null,
+      word_count: 0,
+    })
+    .select()
+    .single();
+
+  if (docError || !doc) {
+    return NextResponse.json({ error: docError?.message ?? "Failed to create document" }, { status: 500 });
+  }
 
   // 2. Create story bible
-  const [bible] = await db.insert(storyBibles).values({
-    documentId: doc.id,
-    userId,
-  }).returning();
+  const { data: bible, error: bibleError } = await supabase
+    .from("story_bibles")
+    .insert({
+      document_id: doc.id,
+      user_id: user.id,
+    })
+    .select()
+    .single();
+
+  if (bibleError || !bible) {
+    return NextResponse.json({ error: bibleError?.message ?? "Failed to create bible" }, { status: 500 });
+  }
 
   // 3. Create characters
   if (body.characters?.length > 0) {
-    await db.insert(characters).values(
-      body.characters.map((char) => ({
-        bibleId: bible.id,
-        userId,
-        name: char.name,
-        role: char.role,
-        traits: char.traits,
-        hair: char.hair,
-        eyes: char.eyes,
-        heightBuild: char.heightBuild,
-        firstImpression: char.firstImpression,
-        externalGoal: char.externalGoal,
-        fears: char.fears,
-      }))
-    );
+    const { error: charError } = await supabase
+      .from("characters")
+      .insert(
+        body.characters.map((char) => ({
+          bible_id: bible.id,
+          user_id: user.id,
+          name: char.name,
+          role: char.role,
+          traits: char.traits,
+          hair: char.hair,
+          eyes: char.eyes,
+          height_build: char.heightBuild,
+          first_impression: char.firstImpression,
+          external_goal: char.externalGoal,
+          fears: char.fears,
+        }))
+      );
+
+    if (charError) console.error("Character insert error:", charError);
   }
 
   // 4. Create world entries for locations
   if (body.locations?.length > 0) {
-    await db.insert(worldEntries).values(
-      body.locations.map((loc) => ({
-        bibleId: bible.id,
-        userId,
-        title: loc.title,
-        category: "location",
-        oneLine: loc.oneLine,
-        atmosphere: loc.atmosphere,
-        content: `${body.timePeriod ? `Time period: ${body.timePeriod}. ` : ""}${loc.oneLine}`,
-      }))
-    );
+    const { error: worldError } = await supabase
+      .from("world_entries")
+      .insert(
+        body.locations.map((loc) => ({
+          bible_id: bible.id,
+          user_id: user.id,
+          title: loc.title,
+          category: "location",
+          one_line: loc.oneLine,
+          atmosphere: loc.atmosphere,
+          content: `${body.timePeriod ? `Time period: ${body.timePeriod}. ` : ""}${loc.oneLine}`,
+        }))
+      );
+
+    if (worldError) console.error("World entry insert error:", worldError);
   }
 
   // 5. Create outline sections
-  const outlineItems = [];
+  const outlineItems: {
+    bible_id: string;
+    user_id: string;
+    title: string;
+    type: string;
+    order_index: number;
+    content: string;
+    purpose: string;
+  }[] = [];
 
   if (body.incitingIncident) {
     outlineItems.push({
-      bibleId: bible.id,
-      userId,
+      bible_id: bible.id,
+      user_id: user.id,
       title: "Inciting Incident",
       type: "scene",
-      orderIndex: 0,
+      order_index: 0,
       content: body.incitingIncident,
       purpose: "Hook the reader and set the story in motion",
     });
@@ -112,11 +140,11 @@ export async function POST(req: Request) {
 
   if (body.midpoint) {
     outlineItems.push({
-      bibleId: bible.id,
-      userId,
+      bible_id: bible.id,
+      user_id: user.id,
       title: "Midpoint",
       type: "scene",
-      orderIndex: Math.floor((body.chapterCount || 20) / 2),
+      order_index: Math.floor((body.chapterCount || 20) / 2),
       content: body.midpoint,
       purpose: "Point of no return — everything changes",
     });
@@ -124,11 +152,11 @@ export async function POST(req: Request) {
 
   if (body.blackMoment) {
     outlineItems.push({
-      bibleId: bible.id,
-      userId,
+      bible_id: bible.id,
+      user_id: user.id,
       title: "Black Moment",
       type: "scene",
-      orderIndex: Math.floor((body.chapterCount || 20) * 0.85),
+      order_index: Math.floor((body.chapterCount || 20) * 0.85),
       content: body.blackMoment,
       purpose: "The darkest point before the resolution",
     });
@@ -136,18 +164,22 @@ export async function POST(req: Request) {
 
   if (body.resolution) {
     outlineItems.push({
-      bibleId: bible.id,
-      userId,
+      bible_id: bible.id,
+      user_id: user.id,
       title: "Resolution",
       type: "scene",
-      orderIndex: body.chapterCount || 20,
+      order_index: body.chapterCount || 20,
       content: body.resolution,
       purpose: "How the story ends",
     });
   }
 
   if (outlineItems.length > 0) {
-    await db.insert(outlineSections).values(outlineItems);
+    const { error: outlineError } = await supabase
+      .from("outline_sections")
+      .insert(outlineItems);
+
+    if (outlineError) console.error("Outline insert error:", outlineError);
   }
 
   return NextResponse.json({ documentId: doc.id, bibleId: bible.id });

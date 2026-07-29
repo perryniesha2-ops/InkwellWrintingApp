@@ -27,6 +27,8 @@ import {
 } from "react";
 import type { Editor } from "@tiptap/react";
 import InlineAIToolbar from "@/components/editor/InlineAIToolbar";
+import { AlignLeft } from "lucide-react";
+import { fixHtmlParagraphs, plainTextToHtml } from "@/lib/formatParagraphs";
 
 interface EditorProps {
   content: string;
@@ -120,6 +122,32 @@ export default function WritingEditor({
       },
     },
   });
+
+ const handleFixParagraphs = useCallback(() => {
+  if (!editor) return;
+
+  const { from, to } = editor.state.selection;
+  const hasSelection = from !== to;
+
+  if (hasSelection) {
+    // Fix just the selected text — no headings in selections typically
+    const selectedText = editor.state.doc.textBetween(from, to, "\n");
+    const fixed = plainTextToHtml(selectedText);
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from, to })
+      .insertContentAt(from, fixed)
+      .run();
+  } else {
+    // Fix entire document — preserves headings
+    const currentHtml = editor.getHTML();
+    const fixed = fixHtmlParagraphs(currentHtml);
+   editor.commands.setContent(fixed);
+onChange(editor.getHTML());
+  }
+}, [editor, onChange]);
+
 
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
@@ -265,6 +293,27 @@ export default function WritingEditor({
             >
               <Minus className="w-3.5 h-3.5" />
             </ToolbarButton>
+            <Divider />
+<div style={{ position: "relative" }} className="group">
+  <ToolbarButton
+    onClick={handleFixParagraphs}
+    title="Fix Paragraphs — select text to fix a section, or click to fix entire chapter">
+    <AlignLeft style={{ width: "14px", height: "14px" }} />
+  </ToolbarButton>
+  {/* Tooltip */}
+  <div style={{
+    position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
+    transform: "translateX(-50%)",
+    background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
+    color: "var(--text-primary)", fontSize: "11px", fontFamily: "var(--font-inter)",
+    padding: "4px 8px", whiteSpace: "nowrap", pointerEvents: "none",
+    opacity: 0, transition: "opacity 0.15s", zIndex: 50,
+  }}
+    className="group-hover:opacity-100">
+    Fix Paragraphs
+  </div>
+</div>
+            
 
             {/* Word count */}
             <div

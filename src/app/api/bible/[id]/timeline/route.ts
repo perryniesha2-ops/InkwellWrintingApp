@@ -11,17 +11,23 @@ export async function POST(req: Request, { params }: RouteParams) {
   const { id: bibleId } = await params;
   const body = await req.json();
 
-  const { data: entry, error } = await supabase
-    .from("world_entries")
+  const { data: event, error } = await supabase
+    .from("timeline_events")
     .insert({
       bible_id: bibleId,
       user_id: user.id,
-      title: body.title ?? "New Entry",
-      category: body.category ?? "location",
+      order_index: body.orderIndex ?? 0,
+      time_label: body.timeLabel ?? "Day 1",
+      title: body.title ?? "New Event",
+      description: body.description ?? "",
+      characters: body.characters ?? [],
+      location: body.location ?? "",
+      chapter_ref: body.chapterRef ?? "",
+      type: body.type ?? "event",
     })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(entry);
+  return NextResponse.json(event);
 }
