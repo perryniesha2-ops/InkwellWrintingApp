@@ -562,12 +562,14 @@ export function generateChapterHeading(
   ${title ? `<h1 style="font-size:1.6em;font-weight:300;letter-spacing:0.1em;color:#333;">${title}</h1>` : ""}
 </div>`;
 
-    case "ornate":
-      return `
+   case "ornate":
+  return `
 <div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${title ? `
   <p style="font-size:1.5em;color:#555;text-indent:0;line-height:1;margin:0.5em 0;">${sceneChar}</p>
-  ${title ? `<h1 style="font-size:1.5em;font-style:italic;margin:0.25em 0;">${title}</h1>` : ""}
+  <h1 style="font-size:1.5em;font-style:italic;margin:0.25em 0;">${title}</h1>
   <p style="font-size:1.5em;color:#555;text-indent:0;line-height:1;margin:0.5em 0;">${sceneChar}</p>
+  ` : ""}
 </div>`;
 
     case "modern":
@@ -606,22 +608,24 @@ export function generateChapterHeading(
   ${title ? `<h1 style="font-size:2em;font-weight:900;letter-spacing:-0.02em;text-transform:uppercase;">${title}</h1>` : ""}
 </div>`;
 
-    case "vintage":
-      return `
+   case "vintage":
+  return `
 <div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${title ? `
   <p style="font-size:1em;color:#555;letter-spacing:0.2em;text-indent:0;margin:0.5em 0;">— ${sceneChar} —</p>
-  ${title ? `<h1 style="font-size:1.6em;font-weight:bold;margin:0.25em 0;">${title}</h1>` : ""}
+  <h1 style="font-size:1.6em;font-weight:bold;margin:0.25em 0;">${title}</h1>
   <p style="font-size:1em;color:#555;letter-spacing:0.2em;text-indent:0;margin:0.5em 0;">— ${sceneChar} —</p>
+  ` : ""}
 </div>`;
 
-    case "romantic":
-      return `
+   case "romantic":
+  return `
 <div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
-  ${title ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 0.75em;">${title}</h1>` : ""}
-  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.5em;">
-    <span style="font-size:0.8em;color:#555;">✦</span>
-    <div style="width:3em;height:1px;background:#1a1a1a;display:inline-block;"></div>
-    <span style="font-size:0.8em;color:#555;">✦</span>
+  ${title ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 1.5em;">${title}</h1>` : ""}
+  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.75em;margin-top:0;">
+    <span style="font-size:0.7em;color:#888;">✦</span>
+    <div style="width:4em;height:1px;background:#888;display:inline-block;"></div>
+    <span style="font-size:0.7em;color:#888;">✦</span>
   </div>
 </div>`;
 
