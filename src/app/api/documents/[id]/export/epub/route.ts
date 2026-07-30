@@ -15,15 +15,23 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 function parseChapters(html: string): { title: string; body: string }[] {
   if (!html || html.trim() === "") return [];
+
   const h1Regex = /<h1[^>]*>(.*?)<\/h1>/gi;
   const parts = html.split(h1Regex);
-  if (parts.length <= 1) return [{ title: "", body: html }];
+
+  if (parts.length <= 1) {
+    return [{ title: "", body: html }];
+  }
+
   const chapters: { title: string; body: string }[] = [];
   for (let i = 1; i < parts.length; i += 2) {
     const title = parts[i].replace(/<[^>]+>/g, "").trim();
     const body = parts[i + 1] ?? "";
-    if (title || body.trim()) chapters.push({ title, body });
+    if (title || body.trim()) {
+      chapters.push({ title, body });
+    }
   }
+
   return chapters.length > 0 ? chapters : [{ title: "", body: html }];
 }
 

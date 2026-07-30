@@ -38,16 +38,7 @@ const CHAPTER_STYLES: {
   { id: "literary",     label: "Literary",     preview: "ONE\nTitle\n──────────",                desc: "Understated, italic" },
 ];
 
-const CHAPTER_NUMBER_OPTIONS: {
-  id: EpubSettings["chapterNumbers"];
-  label: string;
-  preview: string;
-}[] = [
-  { id: "word",   label: "Words",  preview: "One, Two..." },
-  { id: "arabic", label: "Arabic", preview: "1, 2, 3..." },
-  { id: "roman",  label: "Roman",  preview: "I, II, III..." },
-  { id: "none",   label: "None",   preview: "No numbers" },
-];
+
 
 function SectionLabel({ text }: { text: string }) {
   return (
@@ -325,34 +316,7 @@ export default function EpubExportModal({
                 </div>
               </div>
 
-              {/* Chapter Numbers */}
-              <div>
-                <SectionLabel text="Chapter Numbers" />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px" }}>
-                  {CHAPTER_NUMBER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      onClick={() => update({ chapterNumbers: opt.id })}
-                      style={{
-                        padding: "10px 8px", cursor: "pointer",
-                        border: "1px solid", transition: "all 0.15s",
-                        borderColor: settings.chapterNumbers === opt.id ? "var(--gold-primary)" : "var(--border-color)",
-                        background: settings.chapterNumbers === opt.id ? "var(--gold-subtle)" : "transparent",
-                      }}>
-                      <p style={{
-                        fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 600,
-                        color: settings.chapterNumbers === opt.id ? "var(--gold-primary)" : "var(--text-primary)",
-                        margin: "0 0 2px", textAlign: "center",
-                      }}>
-                        {opt.label}
-                      </p>
-                      <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", margin: 0, textAlign: "center" }}>
-                        {opt.preview}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              
 
               {/* Line Spacing + Drop Cap */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
@@ -397,6 +361,32 @@ export default function EpubExportModal({
                   </div>
                 </div>
               </div>
+              {/* Chapter Heading Alignment */}
+<div>
+  <SectionLabel text="Chapter Heading Alignment" />
+  <div style={{
+    display: "flex", background: "var(--bg-elevated)",
+    border: "1px solid var(--border-color)", padding: "3px", gap: "2px",
+  }}>
+    {[
+      { value: "center" as const, label: "Center", icon: "⬛" },
+      { value: "left" as const,   label: "Left",   icon: "▬" },
+    ].map((opt) => (
+      <button
+        key={opt.value}
+        onClick={() => update({ chapterAlign: opt.value })}
+        style={{
+          flex: 1, padding: "6px 8px",
+          fontSize: "11px", fontFamily: "var(--font-inter)", fontWeight: 600,
+          border: "none", cursor: "pointer", transition: "all 0.15s",
+          background: settings.chapterAlign === opt.value ? "var(--gold-primary)" : "transparent",
+          color: settings.chapterAlign === opt.value ? "var(--bg-primary)" : "var(--text-muted)",
+        }}>
+        {opt.label}
+      </button>
+    ))}
+  </div>
+</div>
 
               {/* Preview */}
               <div>
@@ -412,25 +402,26 @@ export default function EpubExportModal({
                   color: "var(--text-primary)",
                 }}>
                   {/* Chapter heading preview */}
-                  <div style={{ textAlign: "center", marginBottom: "1.5em" }}>
-                    {settings.chapterNumbers !== "none" && (
-                      <p style={{
-                        fontSize: "0.7em", letterSpacing: "0.2em",
-                        textTransform: "uppercase", color: "var(--text-muted)",
-                        marginBottom: "0.4em", textIndent: 0,
-                      }}>
-                        Chapter {
-                          settings.chapterNumbers === "word" ? "One"
-                          : settings.chapterNumbers === "roman" ? "I"
-                          : "1"
-                        }
-                      </p>
-                    )}
-                    <p style={{ fontSize: "1.3em", fontWeight: "bold", marginBottom: "0.75em", textIndent: 0 }}>
-                      Tamira
-                    </p>
-                    <div style={{ width: "2em", height: "1px", background: "var(--text-muted)", margin: "0 auto 0.75em" }} />
-                  </div>
+                  {/* Chapter heading preview */}
+<div style={{
+  textAlign: settings.chapterAlign ?? "center",
+  marginBottom: "1.5em",
+}}>
+  <p style={{
+    fontSize: "1.3em", fontWeight: "bold",
+    marginBottom: "0.75em", textIndent: 0,
+    textAlign: settings.chapterAlign ?? "center",
+  }}>
+    Chapter 1 - Tamira
+  </p>
+  <p style={{
+    textAlign: settings.chapterAlign ?? "center",
+    color: "var(--text-dim)", letterSpacing: "0.3em",
+    fontFamily: "Georgia, serif", textIndent: 0,
+  }}>
+    {SCENE_BREAK_CHARS[settings.sceneBreak]}
+  </p>
+</div>
 
                   {/* Body text */}
                   <p style={{ textIndent: 0, margin: 0 }}>

@@ -4,7 +4,7 @@ export interface EpubSettings {
     | "elegant" | "bold" | "vintage" | "romantic" | "thriller" | "literary";
   bodyFont: "palatino" | "garamond" | "crimson" | "baskerville" | "source-serif";
   sceneBreak: "dots" | "stars" | "fleuron" | "dingbat" | "line" | "diamond";
-  chapterNumbers: "word" | "arabic" | "roman" | "none";
+  chapterAlign: "left" | "center"; 
   dropCap: boolean;
   lineHeight: "tight" | "normal" | "loose";
   fontSize: "small" | "medium" | "large";
@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: EpubSettings = {
   chapterStyle: "classic",
   bodyFont: "garamond",
   sceneBreak: "fleuron",
-  chapterNumbers: "word",
+  chapterAlign: "center",
   dropCap: true,
   lineHeight: "normal",
   fontSize: "medium",
@@ -45,14 +45,7 @@ export function numberToRoman(n: number): string {
   return result;
 }
 
-export function formatChapterNumber(n: number, style: EpubSettings["chapterNumbers"]): string {
-  switch (style) {
-    case "word":    return numberToWord(n);
-    case "roman":   return numberToRoman(n);
-    case "arabic":  return String(n);
-    case "none":    return "";
-  }
-}
+
 
 // ── Scene break ornaments ──────────────────────────────
 
@@ -550,115 +543,108 @@ export function generateChapterHeading(
   chapterTitle: string,
   settings: EpubSettings
 ): string {
-  const numStr = formatChapterNumber(chapterNumber, settings.chapterNumbers);
   const sceneChar = SCENE_BREAK_CHARS[settings.sceneBreak];
+  const title = chapterTitle || "";
+  const align = settings.chapterAlign ?? "center";
+  const textAlign = `text-align:${align};`;
 
   switch (settings.chapterStyle) {
     case "classic":
       return `
-<div class="chapter-heading classic">
-  ${numStr ? `<p class="chapter-label">Chapter ${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
-  <div class="chapter-rule"></div>
+<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.6em;letter-spacing:0.05em;margin-bottom:1em;">${title}</h1>` : ""}
+  <div style="width:3em;height:1px;background:#1a1a1a;margin:0 ${align === "center" ? "auto" : "0"};"></div>
 </div>`;
 
     case "minimal":
       return `
-<div class="chapter-heading minimal">
-  ${numStr ? `<p class="chapter-number">${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+<div style="${textAlign}padding-top:20%;margin-bottom:4em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.6em;font-weight:300;letter-spacing:0.1em;color:#333;">${title}</h1>` : ""}
 </div>`;
 
     case "ornate":
       return `
-<div class="chapter-heading ornate">
-  <p class="ornament">${sceneChar}</p>
-  ${numStr ? `<p class="chapter-label">Chapter ${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
-  <p class="ornament">${sceneChar}</p>
+<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  <p style="font-size:1.5em;color:#555;text-indent:0;line-height:1;margin:0.5em 0;">${sceneChar}</p>
+  ${title ? `<h1 style="font-size:1.5em;font-style:italic;margin:0.25em 0;">${title}</h1>` : ""}
+  <p style="font-size:1.5em;color:#555;text-indent:0;line-height:1;margin:0.5em 0;">${sceneChar}</p>
 </div>`;
 
     case "modern":
       return `
-<div class="chapter-heading modern">
-  <h1 class="chapter-title">${numStr || chapterTitle}</h1>
-  ${numStr && chapterTitle ? `<p class="chapter-subtitle">${chapterTitle}</p>` : ""}
-  <div class="chapter-lines">
-    <span class="chapter-line"></span>
-    <span class="chapter-line"></span>
+<div style="${textAlign}padding-top:18%;margin-bottom:3.5em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.4em;letter-spacing:0.3em;text-transform:uppercase;font-weight:bold;margin-bottom:0.75em;">${title}</h1>` : ""}
+  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.75em;">
+    <span style="width:2em;height:1px;background:#1a1a1a;display:inline-block;"></span>
+    <span style="width:2em;height:1px;background:#1a1a1a;display:inline-block;"></span>
   </div>
 </div>`;
 
     case "dark":
       return `
-<div class="chapter-heading dark">
-  ${numStr ? `<p class="chapter-label">— ${numStr.toLowerCase()} —</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+<div style="${textAlign}padding-top:20%;margin-bottom:4em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.8em;font-weight:bold;letter-spacing:-0.02em;">${title}</h1>` : ""}
 </div>`;
 
     case "contemporary":
       return `
-<div class="chapter-heading contemporary">
-  ${numStr ? `<span class="chapter-number">Chapter ${numStr}</span>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+<div style="padding-top:15%;margin-bottom:3em;page-break-before:always;border-bottom:1px solid #1a1a1a;padding-bottom:1em;">
+  ${title ? `<h1 style="font-size:1.4em;text-align:${align};letter-spacing:-0.01em;">${title}</h1>` : ""}
 </div>`;
 
-case "elegant":
-  return `
-<div class="chapter-heading elegant">
-  <div class="elegant-top-line"></div>
-  ${numStr ? `<p class="chapter-label">${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
-  <div class="elegant-bottom-line"></div>
+    case "elegant":
+      return `
+<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  <div style="width:6em;margin:0.75em ${align === "center" ? "auto" : "0"};border-top:1px solid #1a1a1a;"></div>
+  ${title ? `<h1 style="font-size:1.5em;font-style:italic;font-weight:normal;letter-spacing:0.05em;margin:0.5em 0;">${title}</h1>` : ""}
+  <div style="width:6em;margin:0.75em ${align === "center" ? "auto" : "0"};border-top:1px solid #1a1a1a;"></div>
 </div>`;
 
-case "bold":
-  return `
-<div class="chapter-heading bold-style">
-  ${numStr ? `<p class="chapter-number">${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+    case "bold":
+      return `
+<div style="text-align:${align};margin-top:15%;border-top:3px solid #1a1a1a;padding-top:1.5em;margin-bottom:3em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:2em;font-weight:900;letter-spacing:-0.02em;text-transform:uppercase;">${title}</h1>` : ""}
 </div>`;
 
-case "vintage":
-  return `
-<div class="chapter-heading vintage">
-  <p class="vintage-ornament">— ${sceneChar} —</p>
-  ${numStr ? `<p class="chapter-label">Chapter the ${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
-  <p class="vintage-ornament">— ${sceneChar} —</p>
+    case "vintage":
+      return `
+<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  <p style="font-size:1em;color:#555;letter-spacing:0.2em;text-indent:0;margin:0.5em 0;">— ${sceneChar} —</p>
+  ${title ? `<h1 style="font-size:1.6em;font-weight:bold;margin:0.25em 0;">${title}</h1>` : ""}
+  <p style="font-size:1em;color:#555;letter-spacing:0.2em;text-indent:0;margin:0.5em 0;">— ${sceneChar} —</p>
 </div>`;
 
-case "romantic":
-  return `
-<div class="chapter-heading romantic" style="text-align:center;padding-top:15%;margin-bottom:3em;page-break-before:always;">
-  ${chapterTitle ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 0.25em;">${chapterTitle}</h1>` : ""}
-  ${numStr ? `<p style="font-size:0.7em;letter-spacing:0.25em;text-transform:uppercase;color:#666;margin:0 0 0.75em;text-indent:0;">${numStr}</p>` : ""}
-  <div style="display:flex;align-items:center;justify-content:center;gap:0.5em;margin-top:0.75em;">
-    <span style="font-size:0.6em;color:#555;">✦</span>
+    case "romantic":
+      return `
+<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 0.75em;">${title}</h1>` : ""}
+  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.5em;">
+    <span style="font-size:0.8em;color:#555;">✦</span>
     <div style="width:3em;height:1px;background:#1a1a1a;display:inline-block;"></div>
-    <span style="font-size:0.6em;color:#555;">✦</span>
+    <span style="font-size:0.8em;color:#555;">✦</span>
   </div>
 </div>`;
 
-case "thriller":
-  return `
-<div class="chapter-heading thriller">
-  <div class="thriller-bar"></div>
-  ${numStr ? `<p class="chapter-number">${numStr}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+    case "thriller":
+      return `
+<div style="text-align:${align};padding-top:20%;margin-bottom:3em;page-break-before:always;">
+  <div style="width:100%;height:4px;background:#1a1a1a;margin-bottom:1em;"></div>
+  ${title ? `<h1 style="font-size:1.6em;font-weight:900;letter-spacing:-0.02em;">${title}</h1>` : ""}
 </div>`;
 
-case "literary":
-  return `
-<div class="chapter-heading literary">
-  ${numStr ? `<p class="chapter-label">${numStr.toUpperCase()}</p>` : ""}
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
+    case "literary":
+      return `
+<div style="text-align:${align};padding-top:18%;margin-bottom:4em;page-break-before:always;border-bottom:1px solid #ccc;padding-bottom:1.5em;">
+  ${title ? `<h1 style="font-size:1.5em;font-weight:normal;font-style:italic;letter-spacing:0.02em;">${title}</h1>` : ""}
 </div>`;
 
     default:
-      return `<h1>${chapterTitle}</h1>`;
+      return title
+        ? `<h1 style="page-break-before:always;text-align:${align};">${title}</h1>`
+        : `<div style="page-break-before:always;height:4em;"></div>`;
   }
 }
+   
 
 // ── Content processor ──────────────────────────────────
 

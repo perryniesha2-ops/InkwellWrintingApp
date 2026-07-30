@@ -27,8 +27,9 @@ import {
 } from "react";
 import type { Editor } from "@tiptap/react";
 import InlineAIToolbar from "@/components/editor/InlineAIToolbar";
-import { AlignLeft } from "lucide-react";
 import { fixHtmlParagraphs, plainTextToHtml } from "@/lib/formatParagraphs";
+import TextAlign from "@tiptap/extension-text-align";
+import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 
 interface EditorProps {
   content: string;
@@ -102,15 +103,20 @@ export default function WritingEditor({
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Typography,
-      Underline,
-      CharacterCount,
-      Placeholder.configure({
-        placeholder: placeholder ?? "Begin your story here…",
-      }),
-    ],
+  extensions: [
+    StarterKit,
+    Typography,
+    Underline,
+    CharacterCount,
+    TextAlign.configure({
+      types: ["heading", "paragraph"],
+      defaultAlignment: "left",
+    }),
+  
+    Placeholder.configure({
+      placeholder: placeholder ?? "Begin your story here…",
+    }),
+  ],
     content,
     onUpdate({ editor }) {
       onChange(editor.getHTML());
@@ -244,6 +250,27 @@ onChange(editor.getHTML());
             </ToolbarButton>
 
             <Divider />
+
+<ToolbarButton
+  onClick={() => editor.chain().focus().setTextAlign("left").run()}
+  active={editor.isActive({ textAlign: "left" })}
+  title="Align Left">
+  <AlignLeft style={{ width: "14px", height: "14px" }} />
+</ToolbarButton>
+
+<ToolbarButton
+  onClick={() => editor.chain().focus().setTextAlign("center").run()}
+  active={editor.isActive({ textAlign: "center" })}
+  title="Center">
+  <AlignCenter style={{ width: "14px", height: "14px" }} />
+</ToolbarButton>
+
+<ToolbarButton
+  onClick={() => editor.chain().focus().setTextAlign("right").run()}
+  active={editor.isActive({ textAlign: "right" })}
+  title="Align Right">
+  <AlignRight style={{ width: "14px", height: "14px" }} />
+</ToolbarButton>
 
             <ToolbarButton
               onClick={() =>
