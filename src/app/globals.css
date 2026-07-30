@@ -316,10 +316,6 @@
     letter-spacing: 0.01em;
   }
 
-  .editor-prose p {
-  margin-bottom: 1.6em;
-  min-height: 1em; 
-}
 
   .editor-prose h1 {
     font-family: "DM Sans", sans-serif;
@@ -508,10 +504,6 @@
   display: inline-block;
 }
 
-/* Hide native file input text in Uploadthing buttons */
-.uploadthing-button input[type="file"] {
-  display: none;
-}
 
 /* Also hide the ::after content that shows filename */
 [data-ut-element="button"]::after {
@@ -520,8 +512,8 @@
 
 /* Editor prose paragraph spacing */
 .editor-prose p {
-  margin-bottom: 0.75em;  /* ← was likely 1.6em or larger */
-  min-height: 1em;
+margin-bottom: 1.6em;
+  min-height: 1em; 
   line-height: 1.8;
 }
 
@@ -529,4 +521,13 @@
 .editor-prose p:empty,
 .editor-prose p.is-empty {
   margin-bottom: 0.5em;
+}
+
+@media print {
+  .drop-cap::first-letter,
+  p.drop-cap::first-letter {
+    font-size: 2.5em;
+    line-height: 0.85;
+    margin: 0.05em 0.1em 0 0;
+  }
 }

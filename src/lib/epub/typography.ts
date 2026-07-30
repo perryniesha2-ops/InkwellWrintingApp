@@ -160,15 +160,17 @@ p:first-of-type {
 }
 
 /* ── Drop cap ── */
+// Replace the drop cap CSS with:
 ${settings.dropCap ? `
-.chapter-start > p:first-of-type::first-letter,
+.drop-cap::first-letter,
 p.drop-cap::first-letter {
-  font-size: 3.4em;
+  font-size: 3em;
   font-weight: bold;
   float: left;
-  line-height: 0.75;
-  margin: 0.05em 0.08em 0 0;
+  line-height: 0.8;
+  margin: 0.1em 0.12em 0 0;
   padding: 0;
+  font-family: ${font.stack};
 }
 ` : ""}
 
@@ -628,13 +630,13 @@ case "vintage":
 
 case "romantic":
   return `
-<div class="chapter-heading romantic">
-  ${chapterTitle ? `<h1 class="chapter-title">${chapterTitle}</h1>` : ""}
-  ${numStr ? `<p class="chapter-label">${numStr}</p>` : ""}
-  <div class="romantic-flourish">
-    <span>✦</span>
-    <div class="romantic-line"></div>
-    <span>✦</span>
+<div class="chapter-heading romantic" style="text-align:center;padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${chapterTitle ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 0.25em;">${chapterTitle}</h1>` : ""}
+  ${numStr ? `<p style="font-size:0.7em;letter-spacing:0.25em;text-transform:uppercase;color:#666;margin:0 0 0.75em;text-indent:0;">${numStr}</p>` : ""}
+  <div style="display:flex;align-items:center;justify-content:center;gap:0.5em;margin-top:0.75em;">
+    <span style="font-size:0.6em;color:#555;">✦</span>
+    <div style="width:3em;height:1px;background:#1a1a1a;display:inline-block;"></div>
+    <span style="font-size:0.6em;color:#555;">✦</span>
   </div>
 </div>`;
 
