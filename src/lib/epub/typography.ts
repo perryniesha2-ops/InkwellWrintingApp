@@ -618,14 +618,14 @@ export function generateChapterHeading(
   ` : ""}
 </div>`;
 
-   case "romantic":
+  case "romantic":
   return `
-<div style="${textAlign}padding-top:15%;margin-bottom:3em;page-break-before:always;">
-  ${title ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 1.5em;">${title}</h1>` : ""}
-  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.75em;margin-top:0;">
-    <span style="font-size:0.7em;color:#888;">✦</span>
-    <div style="width:4em;height:1px;background:#888;display:inline-block;"></div>
-    <span style="font-size:0.7em;color:#888;">✦</span>
+<div style="text-align:${align};padding-top:15%;margin-bottom:3em;page-break-before:always;">
+  ${title ? `<h1 style="font-size:1.8em;font-style:italic;font-weight:normal;margin:0 0 1em;">${title}</h1>` : ""}
+  <div style="display:flex;align-items:center;justify-content:${align === "center" ? "center" : "flex-start"};gap:0.5em;margin:0 auto;max-width:200px;">
+    <span style="font-size:0.7em;color:#888;line-height:1;">✦</span>
+    <div style="flex:1;height:1px;background:#888;"></div>
+    <span style="font-size:0.7em;color:#888;line-height:1;">✦</span>
   </div>
 </div>`;
 
