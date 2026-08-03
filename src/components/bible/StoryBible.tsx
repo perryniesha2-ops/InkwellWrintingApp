@@ -127,18 +127,18 @@ interface StoryBible {
 // ── Field components ───────────────────────────────────
 
 function Field({
-  label,
-  value,
-  onChange,
-  multiline = false,
-  placeholder,
+  label, value, onChange, multiline = false, placeholder, hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
   placeholder?: string;
+  hint?: string;
 }) {
+  // Ensure value is never undefined
+  const safeValue = value ?? "";
+
   const base: React.CSSProperties = {
     width: "100%",
     background: "var(--bg-elevated)",
@@ -155,48 +155,34 @@ function Field({
 
   return (
     <div>
-      <label
-        style={{
-          display: "block",
-          fontSize: "10px",
-          fontFamily: "var(--font-inter)",
-          fontWeight: 600,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "var(--text-dim)",
-          marginBottom: "4px",
-        }}
-      >
+      <label style={{ display: "block", fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "4px" }}>
         {label}
       </label>
       {multiline ? (
         <textarea
-          value={value}
+          value={safeValue}  // ← use safeValue
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={3}
           style={{ ...base, resize: "vertical", lineHeight: 1.6 }}
-          onFocus={(e) => {
-            e.target.style.borderColor = "var(--gold-primary)";
-          }}
-          onBlur={(e) => {
-            e.target.style.borderColor = "var(--border-color)";
-          }}
+          onFocus={(e) => { e.target.style.borderColor = "var(--gold-primary)"; }}
+          onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; }}
         />
       ) : (
         <input
           type="text"
-          value={value}
+          value={safeValue}  // ← use safeValue
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           style={base}
-          onFocus={(e) => {
-            e.target.style.borderColor = "var(--gold-primary)";
-          }}
-          onBlur={(e) => {
-            e.target.style.borderColor = "var(--border-color)";
-          }}
+          onFocus={(e) => { e.target.style.borderColor = "var(--gold-primary)"; }}
+          onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; }}
         />
+      )}
+      {hint && (
+        <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", marginTop: "4px", fontStyle: "italic" }}>
+          {hint}
+        </p>
       )}
     </div>
   );
@@ -469,23 +455,22 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
     setActiveSection(section);
   };
 
-  const saveSection = async (section: OutlineSection) => {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/bible/${bible?.id}/outline/${section.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(section),
-      });
-      const updated = (await res.json()) as OutlineSection;
-      setOutlineSections((prev) =>
-        prev.map((s) => (s.id === section.id ? updated : s)),
-      );
-      setActiveSection(updated);
-    } finally {
-      setSaving(false);
-    }
-  };
+ const saveSection = async (section: OutlineSection) => {
+    console.log("bible?.id:", bible?.id);
+  console.log("section.id:", section.id);
+  console.log("URL:", `/api/bible/${bible?.id}/outline/${section.id}`);
+  setSaving(true);
+  try {
+    const res = await fetch(`/api/bible/${bible?.id}/outline/${section.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(section),
+    });
+    const updated = await res.json() as OutlineSection;
+    setOutlineSections((prev) => prev.map((s) => s.id === section.id ? updated : s));
+    setActiveSection(updated);
+  } finally { setSaving(false); }
+};
 
   const deleteSection = async (sectionId: string) => {
     if (!confirm("Delete this chapter?")) return;

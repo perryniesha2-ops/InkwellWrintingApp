@@ -11,14 +11,27 @@ export async function PATCH(req: Request, { params }: RouteParams) {
   const { charId } = await params;
   const body = await req.json();
 
-  const { id, bibleId, userId, createdAt, bible_id, user_id, created_at, ...updateData } = body;
+  // Replace the update block with:
+const {
+  id, bibleId, userId, createdAt,
+  bible_id, user_id, created_at,
+  ...rest
+} = body;
 
-  const { data: char, error } = await supabase
-    .from("characters")
-    .update(updateData)
-    .eq("id", charId)
-    .select()
-    .single();
+const toSnake = (str: string) =>
+  str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+
+const updateData: Record<string, unknown> = {};
+for (const [key, value] of Object.entries(rest)) {
+  updateData[toSnake(key)] = value;
+}
+
+const { data: char, error } = await supabase
+  .from("characters")
+  .update(updateData)
+  .eq("id", charId)
+  .select()
+  .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(char);

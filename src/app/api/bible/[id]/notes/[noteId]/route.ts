@@ -10,14 +10,26 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
   const { noteId } = await params;
   const body = await req.json();
-  const { id, bibleId, userId, createdAt, bible_id, user_id, created_at, ...updateData } = body;
+ const {
+  id, bibleId, userId, createdAt,
+  bible_id, user_id, created_at,
+  ...rest
+} = body;
 
-  const { data: note, error } = await supabase
-    .from("bible_notes")
-    .update(updateData)
-    .eq("id", noteId)
-    .select()
-    .single();
+const toSnake = (str: string) =>
+  str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+
+const updateData: Record<string, unknown> = {};
+for (const [key, value] of Object.entries(rest)) {
+  updateData[toSnake(key)] = value;
+}
+
+const { data: note, error } = await supabase
+  .from("bible_notes")
+  .update(updateData)
+  .eq("id", noteId)
+  .select()
+  .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(note);
