@@ -192,6 +192,21 @@ const handleEpub = async () => {
       return;
     }
 
+    // Warn about paragraph formatting
+    const hasLongParagraphs = content && 
+      content.split(/<\/p>/i).some(p => p.replace(/<[^>]+>/g, "").length > 500);
+    
+    if (hasLongParagraphs) {
+      const proceed = confirm(
+        "Some paragraphs look like they may have merged sentences.\n\nFor best results, use the Fix Paragraphs button (¶) in the toolbar first, then export.\n\nExport anyway?"
+      );
+      if (!proceed) {
+        setExporting(null);
+        return;
+      }
+    }
+
+
     const response = await fetch(`/api/documents/${documentId}/export/docx`);
     if (!response.ok) {
       const err = await response.json() as { error: string };

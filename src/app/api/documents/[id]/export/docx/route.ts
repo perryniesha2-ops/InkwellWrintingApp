@@ -22,29 +22,28 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
 
   const nodes: ParsedNode[] = [];
 
-  // Pre-process: normalize line endings and clean up
-  const cleaned = html
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    // Fix merged sentences — period followed directly by capital
-    .replace(/([a-z][.!?])([A-Z])/g, "$1\n$2")
-    // Fix merged dialogue
-    .replace(/([.!?]["'])([A-Z"'])/g, "$1\n$2")
-    .trim();
+  // Check if content is basically one big paragraph
+  const pTagCount = (html.match(/<p[^>]*>/gi) ?? []).length;
+  const contentLength = html.replace(/<[^>]+>/g, "").length;
+  const avgParagraphLength = contentLength / Math.max(pTagCount, 1);
 
-  // Split on block-level tags
+  // If average paragraph is very long (>500 chars) — content needs splitting
+  const needsSplitting = avgParagraphLength > 500;
+
+  // Extract all text content preserving structure
+  const div = `<div>${html}</div>`;
+
+  // Process each <p> tag
   const blockRegex = /<(h[1-6]|p|blockquote|hr)[^>]*>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
-  const matches = Array.from(cleaned.matchAll(blockRegex));
+  const matches = Array.from(html.matchAll(blockRegex));
 
   if (matches.length === 0) {
-    // No HTML tags — treat as plain text
-    const paragraphs = cleaned.split(/\n\n+/).filter((p) => p.trim());
+    // No tags — treat as plain text and split aggressively
+    const paragraphs = splitIntoSentenceGroups(html.replace(/<[^>]+>/g, ""));
     for (const p of paragraphs) {
-      nodes.push({
-        type: "paragraph",
-        text: p.trim(),
-        runs: [{ text: p.trim() }],
-      });
+      if (p.trim()) {
+        nodes.push({ type: "paragraph", text: p.trim(), runs: [{ text: p.trim() }] });
+      }
     }
     return nodes;
   }
@@ -58,15 +57,11 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
       continue;
     }
 
-    // Detect alignment from style attribute
     const styleAttr = match[0].match(/style="[^"]*text-align:\s*(left|center|right)/i);
     const align = (styleAttr?.[1] as "left" | "center" | "right") ?? "left";
 
-    // Parse inline formatting
-    const runs = parseInlineHtml(inner);
-    const text = runs.map((r) => r.text).join("");
-
-    if (!text.trim()) continue;
+    const text = stripTags(inner).trim();
+    if (!text) continue;
 
     let type: ParsedNode["type"] = "paragraph";
     if (tag === "h1") type = "heading1";
@@ -74,10 +69,48 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
     else if (tag === "h3") type = "heading3";
     else if (tag === "blockquote") type = "blockquote";
 
-    nodes.push({ type, text: text.trim(), align, runs });
+    // Always split — even short paragraphs might have merged sentences
+    const subParagraphs = needsSplitting || text.length > 300
+      ? splitIntoSentenceGroups(text)
+      : [text];
+
+    for (let i = 0; i < subParagraphs.length; i++) {
+      const trimmed = subParagraphs[i].trim();
+      if (!trimmed) continue;
+      nodes.push({
+        type: i === 0 ? type : "paragraph",
+        text: trimmed,
+        align,
+        runs: [{ text: trimmed }],
+      });
+    }
   }
 
   return nodes;
+}
+
+function splitIntoSentenceGroups(text: string): string[] {
+  if (!text) return [];
+
+  let result = text
+    // Words running together — period followed directly by capital
+    .replace(/([a-z][.!?])([A-Z])/g, "$1\n\n$2")
+    // Closing quote followed directly by capital
+    .replace(/([.!?]["'\u201d\u2019])([A-Z"'\u201c\u2018])/g, "$1\n\n$2")
+    // Closing quote + space + narrative word
+    .replace(
+      /([.!?]["'\u201d\u2019])\s+(He|She|I|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
+      "$1\n\n$2"
+    )
+    // New dialogue after narrative
+    .replace(/([.!?,])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
+    // Sentence end followed by new dialogue starting with capital
+    .replace(/([.!?])\s{2,}(["'\u201c\u2018])/g, "$1\n\n$2");
+
+  return result
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
 }
 
 function parseInlineHtml(html: string): { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] {
