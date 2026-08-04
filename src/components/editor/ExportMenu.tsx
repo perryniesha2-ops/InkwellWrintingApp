@@ -185,169 +185,40 @@ const handleEpub = async () => {
   };
 
   const handleDocx = async () => {
-    setOpen(false);
     setExporting("docx");
-    try {
-      const sections = await getSections();
-      const {
-        Document,
-        Packer,
-        Paragraph,
-        TextRun,
-        HeadingLevel,
-        AlignmentType,
-      } = await import("docx");
-      const { saveAs } = await import("file-saver");
-      type TRun = InstanceType<typeof TextRun>;
-      type TPara = InstanceType<typeof Paragraph>;
-      const paragraphs: TPara[] = [];
-      const hasCover = sections.some((s) => s.type === "cover");
-
-      sections.forEach((s) => {
-        if (s.type === "cover") {
-          paragraphs.push(
-            new Paragraph({
-              text: title,
-              heading: HeadingLevel.TITLE,
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 3000, after: 400 },
-            }),
-          );
-          if (s.content)
-            paragraphs.push(
-              new Paragraph({
-                children: [new TextRun({ text: s.content, italics: true })],
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 200 },
-              }),
-            );
-        } else if (s.type !== "table_of_contents") {
-          if (s.title)
-            paragraphs.push(
-              new Paragraph({
-                text: s.title,
-                heading: HeadingLevel.HEADING_1,
-                pageBreakBefore: true,
-              }),
-            );
-          s.content
-            .split("\n")
-            .filter(Boolean)
-            .forEach((line: string) => {
-              paragraphs.push(
-                new Paragraph({
-                  children: [new TextRun({ text: line })],
-                  spacing: { after: 200 },
-                }),
-              );
-            });
-        }
-      });
-
-      if (!hasCover) {
-        paragraphs.push(
-          new Paragraph({
-            text: title,
-            heading: HeadingLevel.TITLE,
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 3000, after: 400 },
-          }),
-        );
-        if (genre)
-          paragraphs.push(
-            new Paragraph({
-              children: [new TextRun({ text: genre, italics: true })],
-              alignment: AlignmentType.CENTER,
-              spacing: { after: 3000 },
-            }),
-          );
-      }
-
-      const div = document.createElement("div");
-      div.innerHTML = content;
-      div.childNodes.forEach((node) => {
-        const el = node as HTMLElement;
-        const tag = el.tagName?.toLowerCase();
-        const text = el.innerText ?? el.textContent ?? "";
-        if (!text.trim()) return;
-        if (tag === "h1")
-          paragraphs.push(
-            new Paragraph({
-              text,
-              heading: HeadingLevel.HEADING_1,
-              spacing: { before: 480, after: 240 },
-              pageBreakBefore: paragraphs.length > 2,
-            }),
-          );
-        else if (tag === "h2")
-          paragraphs.push(
-            new Paragraph({
-              text,
-              heading: HeadingLevel.HEADING_2,
-              spacing: { before: 360, after: 180 },
-            }),
-          );
-        else if (tag === "h3")
-          paragraphs.push(
-            new Paragraph({
-              text,
-              heading: HeadingLevel.HEADING_3,
-              spacing: { before: 240, after: 120 },
-            }),
-          );
-        else if (tag === "p") {
-          const runs: TRun[] = [];
-          el.childNodes.forEach((child) => {
-            const ce = child as HTMLElement;
-            const ct = ce.tagName?.toLowerCase();
-            const cx = ce.textContent ?? "";
-            if (!cx) return;
-            runs.push(
-              new TextRun({
-                text: cx,
-                bold: ct === "strong" || ct === "b",
-                italics: ct === "em" || ct === "i",
-                underline: ct === "u" ? {} : undefined,
-              }),
-            );
-          });
-          paragraphs.push(
-            new Paragraph({
-              children: runs.length > 0 ? runs : [new TextRun({ text })],
-              spacing: { after: 200 },
-            }),
-          );
-        }
-      });
-
-      const doc = new Document({
-        creator: "Prosr",
-        title,
-        description: genre ?? "",
-        styles: {
-          default: {
-            document: {
-              run: { font: "Garamond", size: 24 },
-              paragraph: { spacing: { line: 360 } },
-            },
-          },
-        },
-        sections: [{ children: paragraphs }],
-      });
-      saveAs(await Packer.toBlob(doc), `${title}.docx`);
-    } catch (err) {
-      console.error("DOCX export error:", err);
-    } finally {
-      setExporting(null);
+  try {
+    if (!documentId) {
+      alert("Save your document first before exporting.");
+      return;
     }
-  };
 
+    const response = await fetch(`/api/documents/${documentId}/export/docx`);
+    if (!response.ok) {
+      const err = await response.json() as { error: string };
+      throw new Error(err.error ?? "Export failed");
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "manuscript").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("DOCX export error:", err);
+    alert("DOCX export failed. Please try again.");
+  } finally {
+    setExporting(null);
+  }
+};
   const ITEMS = [
-    { label: "Word Document", ext: ".docx", icon: File, action: handleDocx },
+  { label: "Word Document", ext: ".docx", icon: File,     action: handleDocx, note: "" },
   { label: "EPUB",          ext: ".epub", icon: BookOpen, action: () => { setOpen(false); setEpubModalOpen(true); }, note: "For proofing & ARC copies" },
-    { label: "PDF", ext: ".pdf", icon: FileText, action: handlePdf },
-    { label: "Plain Text", ext: ".txt", icon: FileText, action: handleTxt },
-  ];
+  { label: "Plain Text",    ext: ".txt",  icon: FileText, action: handleTxt,  note: "" },
+];
 
   return (
     <>
