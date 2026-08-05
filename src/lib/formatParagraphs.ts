@@ -10,20 +10,31 @@ export function splitIntoSentenceGroups(text: string): string[] {
 
   let result = text
     // Closing quote + optional space + opening quote (?" " or ."")
+    // MUST have closing quote before splitting
     .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
-    // Closing quote + optional space + capital I
-    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s''])/g, "$1\n\n$2")
-    // Closing quote + optional space + any capital letter
+
+    // Closing quote + I — only split if the quote CLOSES here
+    // "text." I said → split   (quote is closed by the period+quote)
+    // "text. I said" → DON'T split (I is inside the quote)
+    .replace(/([.!?]["'\u201d\u2019])\s+(I\s)/g, "$1\n\n$2")
+
+    // Closing quote + capital letter (not inside quotes)
     .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
-    // Lowercase + period + capital (no space) — word.Word
+
+    // Words running together — only lowercase then capital
+    // word.Word → split
     .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
-    // Lowercase + period + I (no space) — word.I
-    .replace(/([a-z][.!?])\s*(I[\s''])/g, "$1\n\n$2")
-    // Sentence end + space + new opening quote + capital
+
+    // REMOVED: the rule that split on period + I inside dialogue
+    // This was causing "Now, for the job.\nI need" incorrectly
+
+    // Sentence end + new opening quote + capital
     .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
-    // Closing quote + space + narrative starter word
+
+    // Closing quote + space + narrative word
+    // Only triggers when quote is already closed
     .replace(
-      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There|This|That)\b/g,
+      /([.!?]["'\u201d\u2019])\s+(He|She|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There|This|That)\b/g,
       "$1\n\n$2"
     );
 
@@ -32,7 +43,7 @@ export function splitIntoSentenceGroups(text: string): string[] {
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
 
-  // Rejoin very short fragments (lone punctuation, single word)
+  // Rejoin short fragments
   const merged: string[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
@@ -45,7 +56,6 @@ export function splitIntoSentenceGroups(text: string): string[] {
 
   return merged;
 }
-
 // ── Plain text → HTML ──────────────────────────────────
 
 export function fixParagraphs(text: string): string {
