@@ -3,79 +3,101 @@
  * without changing any words or content.
  */
 
+// ── Core splitter ──────────────────────────────────────
+
+export function splitIntoSentenceGroups(text: string): string[] {
+  if (!text) return [];
+
+  let result = text
+    // Closing quote + optional space + opening quote (?" " or ."")
+    .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
+    // Closing quote + optional space + capital I
+    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s''])/g, "$1\n\n$2")
+    // Closing quote + optional space + any capital letter
+    .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
+    // Lowercase + period + capital (no space) — word.Word
+    .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
+    // Lowercase + period + I (no space) — word.I
+    .replace(/([a-z][.!?])\s*(I[\s''])/g, "$1\n\n$2")
+    // Sentence end + space + new opening quote + capital
+    .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
+    // Closing quote + space + narrative starter word
+    .replace(
+      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There|This|That)\b/g,
+      "$1\n\n$2"
+    );
+
+  const parts = result
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  // Rejoin very short fragments (lone punctuation, single word)
+  const merged: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.length < 5 && merged.length > 0) {
+      merged[merged.length - 1] += " " + part;
+    } else {
+      merged.push(part);
+    }
+  }
+
+  return merged;
+}
+
+// ── Plain text → HTML ──────────────────────────────────
+
 export function fixParagraphs(text: string): string {
   if (!text) return text;
 
-  // Step 1 — normalize line endings
-  let result = text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .trim();
-
-  // Step 2 — first join everything into one block
-  // so we can re-split properly
-  result = result.replace(/\n+/g, " ").trim();
-
-  // Step 3 — split on genuine paragraph boundaries only
-
-  // Dialogue: closing quote followed by narrative (He said / She said etc)
-  // "text." She → split BEFORE "She"
-  result = result.replace(
-    /([.!?]["'\u201c\u201d\u2018\u2019])\s+((?:He|She|I|They|It|We|You|His|Her|The|A|An|My|Your|Our|Their|Then|But|And|So|When|As|If|After|Before|While|Though|Although|Because|Since|Until|Once|Now|Here|There|That|This)\s)/g,
-    "$1\n\n$2"
+  const groups = splitIntoSentenceGroups(
+    text
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim()
   );
 
-  // Narrative followed by opening dialogue
-  // sentence. "dialogue → split BEFORE the quote
-  result = result.replace(
-    /([.!?])\s+(["'\u201c\u2018][A-Z])/g,
-    "$1\n\n$2"
-  );
-
-  // Words running together without space after period
-  // "still.For" → "still.\n\nFor"
-  result = result.replace(
-    /([a-z][.!?])([A-Z][a-z])/g,
-    "$1\n\n$2"
-  );
-
-  // Closing quote immediately followed by capital
-  // "word."Next → "word."\n\nNext
-  result = result.replace(
-    /([.!?]["'\u201d\u2019])([A-Z][a-z])/g,
-    "$1\n\n$2"
-  );
-
-  // Step 4 — clean up orphaned quotes
-  // A lone " or ' on its own line — join it back to previous paragraph
-  result = result.replace(/\n\n(["'\u201c\u201d\u2018\u2019])\n\n/g, " $1\n\n");
-  result = result.replace(/\n\n(["'\u201c\u201d\u2018\u2019])$/g, " $1");
-
-  // Step 5 — collapse excessive breaks
-  result = result.replace(/\n{3,}/g, "\n\n").trim();
-
-  return result;
+  return groups.join("\n\n");
 }
 
-/**
- * Convert plain text paragraphs to Tiptap HTML
- */
 export function plainTextToHtml(text: string): string {
-  const fixed = fixParagraphs(text);
-  return fixed
-    .split("\n\n")
+  const groups = splitIntoSentenceGroups(
+    text
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim()
+  );
+
+  return groups
     .filter((p) => p.trim())
     .map((p) => `<p>${p.trim()}</p>`)
     .join("");
 }
 
-/**
- * Fix paragraphs in existing HTML content
- */
-/**
- * Fix paragraphs in existing HTML content
- * Preserves headings, bold, italic and other formatting
- */
+// ── HTML → fixed HTML ──────────────────────────────────
+
+function needsReformatting(text: string): boolean {
+  if (/[a-z][.!?][A-Z]/.test(text)) return true;
+  if (/[.!?]["'\u201d\u2019]\s*["'\u201c\u2018]/.test(text)) return true;
+  if (/[.!?]["'\u201d\u2019]\s*[A-Z]/.test(text)) return true;
+  if (/[.!?]["'\u201d\u2019]\s*I[\s'']/.test(text)) return true;
+  if (/["'\u201d\u2019][.!?]\s+(He|She|I|They|The|A)\s/.test(text)) return true;
+  return false;
+}
+
+function fixInlineHtml(innerHTML: string): string {
+  if (typeof window === "undefined") return innerHTML;
+  const div = document.createElement("div");
+  div.innerHTML = innerHTML;
+  const text = div.innerText ?? div.textContent ?? "";
+  const groups = splitIntoSentenceGroups(text);
+  return groups
+    .filter((p) => p.trim())
+    .map((p) => `<p>${p.trim()}</p>`)
+    .join("\n");
+}
+
 export function fixHtmlParagraphs(html: string): string {
   if (!html || typeof window === "undefined") return html;
 
@@ -84,15 +106,10 @@ export function fixHtmlParagraphs(html: string): string {
 
   const result: string[] = [];
 
-  // Walk through top-level nodes preserving structure
   div.childNodes.forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      // Raw text node — format and wrap in paragraphs
       const text = node.textContent?.trim() ?? "";
-      if (text) {
-        const fixed = plainTextToHtml(text);
-        result.push(fixed);
-      }
+      if (text) result.push(plainTextToHtml(text));
       return;
     }
 
@@ -100,82 +117,39 @@ export function fixHtmlParagraphs(html: string): string {
     const el = node as HTMLElement;
     const tag = el.tagName.toLowerCase();
 
-    // Preserve headings as-is
+    // Preserve headings exactly
     if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
       result.push(el.outerHTML);
       return;
     }
 
-    // Preserve blockquotes as-is
-    if (tag === "blockquote") {
+    // Preserve blockquotes and hr
+    if (tag === "blockquote" || tag === "hr") {
       result.push(el.outerHTML);
       return;
     }
 
-    // Preserve horizontal rules
-    if (tag === "hr") {
-      result.push(el.outerHTML);
-      return;
-    }
-
-    // For paragraphs — check if content needs reformatting
     if (tag === "p") {
       const text = el.innerText ?? el.textContent ?? "";
       const trimmed = text.trim();
 
-      // Skip empty paragraphs
       if (!trimmed) {
         result.push("<p>&nbsp;</p>");
         return;
       }
 
-      // If paragraph is very long and looks like merged content — reformat it
-      if (trimmed.length > 400 && needsReformatting(trimmed)) {
-        // Preserve inline formatting (bold, italic, etc) by working with innerHTML
-        const innerFixed = fixInlineHtml(el.innerHTML);
-        result.push(innerFixed);
+      // Always check for reformatting — not just long paragraphs
+      if (needsReformatting(trimmed)) {
+        result.push(fixInlineHtml(el.innerHTML));
         return;
       }
 
-      // Otherwise keep as-is
       result.push(el.outerHTML);
       return;
     }
 
-    // Everything else — keep as-is
     result.push(el.outerHTML);
   });
 
   return result.join("\n");
-}
-
-/**
- * Check if a paragraph looks like it has merged sentences that need splitting
- */
-function needsReformatting(text: string): boolean {
-  // Has periods immediately followed by capitals (merged sentences)
-  if (/[a-z][.!?][A-Z]/.test(text)) return true;
-  // Has closing quote immediately followed by capital
-  if (/[.!?]["'][A-Z]/.test(text)) return true;
-  // Has dialogue followed by narrative without break
-  if (/["'][.!?]\s+(He|She|I|They|The|A)\s/.test(text)) return true;
-  return false;
-}
-
-/**
- * Fix paragraph breaks inside HTML while preserving inline tags
- * like <strong>, <em>, <u> etc
- */
-function fixInlineHtml(innerHTML: string): string {
-  // Extract text, fix it, then wrap each paragraph
-  const div = document.createElement("div");
-  div.innerHTML = innerHTML;
-  const text = div.innerText ?? div.textContent ?? "";
-  const fixed = fixParagraphs(text);
-
-  return fixed
-    .split("\n\n")
-    .filter((p) => p.trim())
-    .map((p) => `<p>${p.trim()}</p>`)
-    .join("\n");
 }
