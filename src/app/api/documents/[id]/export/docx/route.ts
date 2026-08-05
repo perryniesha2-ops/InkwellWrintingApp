@@ -2,13 +2,65 @@ import { createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
-  AlignmentType, PageNumber, Header, Footer, PageBreak,
-  NumberFormat, SectionType,
+  AlignmentType, PageNumber, Header, Footer,
 } from "docx";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-// ── HTML parser ────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────
+
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+function splitIntoSentenceGroups(text: string): string[] {
+  if (!text) return [];
+
+  let result = text
+    // ANY punctuation + closing quote + optional space + opening quote
+    .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
+    // ANY punctuation + closing quote + capital I directly after
+    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s'])/g, "$1\n\n$2")
+    // ANY punctuation + closing quote + capital letter directly after
+    .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
+    // Period directly followed by capital — no space
+    .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
+    // Period + I with no space
+    .replace(/([a-z][.!?])\s*(I[\s'])/g, "$1\n\n$2")
+    // Sentence end + space + new dialogue opening
+    .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
+    // Closing quote + space + narrative word
+    .replace(
+      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
+      "$1\n\n$2"
+    );
+
+  const parts = result
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  // Rejoin very short fragments
+  const merged: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.length < 4 && merged.length > 0) {
+      merged[merged.length - 1] += " " + part;
+    } else {
+      merged.push(part);
+    }
+  }
+
+  return merged;
+}
 
 interface ParsedNode {
   type: "paragraph" | "heading1" | "heading2" | "heading3" | "blockquote" | "hr";
@@ -17,28 +69,58 @@ interface ParsedNode {
   runs: { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[];
 }
 
+function parseInlineHtml(html: string): { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] {
+  const runs: { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] = [];
+
+  let remaining = html;
+
+  remaining = remaining
+    .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, content) => {
+      const text = stripTags(content);
+      if (text) runs.push({ text, bold: true });
+      return "";
+    })
+    .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, (_, content) => {
+      const text = stripTags(content);
+      if (text) runs.push({ text, bold: true });
+      return "";
+    })
+    .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (_, content) => {
+      const text = stripTags(content);
+      if (text) runs.push({ text, italic: true });
+      return "";
+    })
+    .replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, (_, content) => {
+      const text = stripTags(content);
+      if (text) runs.push({ text, italic: true });
+      return "";
+    })
+    .replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, (_, content) => {
+      const text = stripTags(content);
+      if (text) runs.push({ text, underline: true });
+      return "";
+    });
+
+  const plainText = stripTags(remaining);
+  if (plainText) runs.unshift({ text: plainText });
+
+  return runs.length > 0 ? runs : [{ text: "" }];
+}
+
 function parseHtmlToNodes(html: string): ParsedNode[] {
   if (!html) return [];
 
   const nodes: ParsedNode[] = [];
 
-  // Check if content is basically one big paragraph
   const pTagCount = (html.match(/<p[^>]*>/gi) ?? []).length;
   const contentLength = html.replace(/<[^>]+>/g, "").length;
   const avgParagraphLength = contentLength / Math.max(pTagCount, 1);
+  const needsSplitting = avgParagraphLength > 400;
 
-  // If average paragraph is very long (>500 chars) — content needs splitting
-  const needsSplitting = avgParagraphLength > 500;
-
-  // Extract all text content preserving structure
-  const div = `<div>${html}</div>`;
-
-  // Process each <p> tag
   const blockRegex = /<(h[1-6]|p|blockquote|hr)[^>]*>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
   const matches = Array.from(html.matchAll(blockRegex));
 
   if (matches.length === 0) {
-    // No tags — treat as plain text and split aggressively
     const paragraphs = splitIntoSentenceGroups(html.replace(/<[^>]+>/g, ""));
     for (const p of paragraphs) {
       if (p.trim()) {
@@ -69,7 +151,6 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
     else if (tag === "h3") type = "heading3";
     else if (tag === "blockquote") type = "blockquote";
 
-    // Always split — even short paragraphs might have merged sentences
     const subParagraphs = needsSplitting || text.length > 300
       ? splitIntoSentenceGroups(text)
       : [text];
@@ -81,100 +162,15 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
         type: i === 0 ? type : "paragraph",
         text: trimmed,
         align,
-        runs: [{ text: trimmed }],
+        runs: parseInlineHtml(inner).length > 1
+          ? parseInlineHtml(inner)
+          : [{ text: trimmed }],
       });
     }
   }
 
   return nodes;
 }
-
-function splitIntoSentenceGroups(text: string): string[] {
-  if (!text) return [];
-
-  let result = text
-    // ANY punctuation + closing quote + optional space + opening quote
-    // Covers: ?" " and ." " and !" "
-    .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
-    // ANY punctuation + closing quote + I (capital I directly after)
-    // Covers: ."I and ?"I and !"I
-    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s'])/g, "$1\n\n$2")
-    // ANY punctuation + closing quote + capital letter directly after
-    .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
-    // Period directly followed by capital — no space (word.Word)
-    .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
-    // Period + I with no space
-    .replace(/([a-z][.!?])\s*(I[\s'])/g, "$1\n\n$2")
-    // Sentence end + space + new dialogue opening
-    .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
-    // Closing quote + space + narrative word
-    .replace(
-      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
-      "$1\n\n$2"
-    );
-
-  const parts = result
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-
-  // Rejoin very short fragments under 4 chars
-  const merged: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part.length < 4 && merged.length > 0) {
-      merged[merged.length - 1] += " " + part;
-    } else {
-      merged.push(part);
-    }
-  }
-
-  return merged;
-}
-
-function parseInlineHtml(html: string): { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] {
-  const runs: { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] = [];
-
-  // Strip all HTML tags and decode entities for simple text
-  const text = html
-    .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, content) => {
-      runs.push({ text: stripTags(content), bold: true });
-      return "";
-    })
-    .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (_, content) => {
-      runs.push({ text: stripTags(content), italic: true });
-      return "";
-    })
-    .replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, (_, content) => {
-      runs.push({ text: stripTags(content), underline: true });
-      return "";
-    })
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .trim();
-
-  if (text) runs.unshift({ text });
-
-  return runs.length > 0 ? runs : [{ text: "" }];
-}
-
-function stripTags(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, " ")
-    .trim();
-}
-
-// ── Node to docx Paragraph ────────────────────────────
 
 function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
   const alignment =
@@ -193,6 +189,8 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
           text: r.text,
           bold: r.bold,
           italics: r.italic,
+          font: "Times New Roman",
+          size: 36,
         })),
       });
 
@@ -203,8 +201,10 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
         spacing: { before: 360, after: 120 },
         children: node.runs.map((r) => new TextRun({
           text: r.text,
-          bold: r.bold,
+          bold: r.bold ?? true,
           italics: r.italic,
+          font: "Times New Roman",
+          size: 28,
         })),
       });
 
@@ -216,6 +216,8 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
         children: node.runs.map((r) => new TextRun({
           text: r.text,
           bold: r.bold ?? true,
+          font: "Times New Roman",
+          size: 24,
         })),
       });
 
@@ -223,7 +225,11 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
       return new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 240, after: 240 },
-        children: [new TextRun({ text: "* * *" })],
+        children: [new TextRun({
+          text: "* * *",
+          font: "Times New Roman",
+          size: 24,
+        })],
       });
 
     case "blockquote":
@@ -233,24 +239,24 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
         children: node.runs.map((r) => new TextRun({
           text: r.text,
           italics: true,
+          font: "Times New Roman",
+          size: 24,
         })),
       });
 
     default: {
-      // Regular paragraph
-      // First paragraph after heading — no indent
-      // Subsequent — first line indent
       const indent = isFirst ? undefined : { firstLine: 720 };
-
       return new Paragraph({
         alignment,
         indent,
-        spacing: { before: 0, after: 0, line: 360, lineRule: "auto" as any },
+        spacing: { before: 0, after: 0, line: 480, lineRule: "auto" as any },
         children: node.runs.map((r) => new TextRun({
           text: r.text,
           bold: r.bold,
           italics: r.italic,
           underline: r.underline ? {} : undefined,
+          font: "Times New Roman",
+          size: 24,
         })),
       });
     }
@@ -277,18 +283,20 @@ export async function GET(req: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    console.log("DOCX export for:", doc.title);
+    console.log("DOCX export for:", doc.title, "content length:", doc.content?.length);
 
-    // Parse HTML to structured nodes
     const nodes = parseHtmlToNodes(doc.content ?? "");
     console.log("Parsed nodes:", nodes.length);
 
-    // Convert to docx paragraphs
     const docxParagraphs: Paragraph[] = [];
     let isFirstAfterHeading = true;
 
     for (const node of nodes) {
-      if (node.type === "heading1" || node.type === "heading2" || node.type === "heading3") {
+      if (
+        node.type === "heading1" ||
+        node.type === "heading2" ||
+        node.type === "heading3"
+      ) {
         isFirstAfterHeading = true;
       }
 
@@ -301,76 +309,34 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     if (docxParagraphs.length === 0) {
       docxParagraphs.push(new Paragraph({
-        children: [new TextRun({ text: "" })],
+        children: [new TextRun({ text: "", font: "Times New Roman", size: 24 })],
       }));
     }
 
-    // Build document
     const document = new Document({
-      numbering: {
-        config: [],
-      },
       styles: {
         default: {
           document: {
             run: {
               font: "Times New Roman",
-              size: 24, // 12pt in half-points
+              size: 24,
             },
             paragraph: {
-              spacing: { line: 360, lineRule: "auto" as any },
+              spacing: { line: 480, lineRule: "auto" as any },
             },
           },
         },
-        paragraphStyles: [
-          {
-            id: "Normal",
-            name: "Normal",
-            run: {
-              font: "Times New Roman",
-              size: 24,
-            },
-          },
-          {
-            id: "Heading1",
-            name: "Heading 1",
-            basedOn: "Normal",
-            next: "Normal",
-            run: {
-              font: "Times New Roman",
-              size: 36,
-              bold: true,
-            },
-            paragraph: {
-              spacing: { before: 480, after: 240 },
-            },
-          },
-          {
-            id: "Heading2",
-            name: "Heading 2",
-            basedOn: "Normal",
-            next: "Normal",
-            run: {
-              font: "Times New Roman",
-              size: 28,
-              bold: true,
-            },
-            paragraph: {
-              spacing: { before: 360, after: 120 },
-            },
-          },
-        ],
       },
       sections: [
         {
           properties: {
             page: {
               size: {
-                width: 12240,  // 8.5 inches in DXA
-                height: 15840, // 11 inches in DXA
+                width: 12240,
+                height: 15840,
               },
               margin: {
-                top: 1440,    // 1 inch
+                top: 1440,
                 right: 1440,
                 bottom: 1440,
                 left: 1440,
@@ -415,19 +381,19 @@ export async function GET(req: Request, { params }: RouteParams) {
     });
 
     const buffer = await Packer.toBuffer(document);
-const uint8Array = new Uint8Array(buffer);
+    const uint8Array = new Uint8Array(buffer);
 
-const filename = `${(doc.title || "manuscript")
-  .replace(/[^a-z0-9]/gi, "-")
-  .toLowerCase()}.docx`;
+    const filename = `${(doc.title || "manuscript")
+      .replace(/[^a-z0-9]/gi, "-")
+      .toLowerCase()}.docx`;
 
-return new NextResponse(uint8Array, {
-  headers: {
-    "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "Content-Disposition": `attachment; filename="${filename}"`,
-    "Content-Length": uint8Array.byteLength.toString(),
-  },
-});
+    return new NextResponse(uint8Array, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": uint8Array.byteLength.toString(),
+      },
+    });
   } catch (err) {
     console.error("DOCX export error:", err);
     return NextResponse.json(
