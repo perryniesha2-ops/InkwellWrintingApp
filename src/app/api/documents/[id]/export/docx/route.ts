@@ -25,21 +25,21 @@ function splitIntoSentenceGroups(text: string): string[] {
   if (!text) return [];
 
   let result = text
-    // ANY punctuation + closing quote + optional space + opening quote
+    // Closing quote + optional space + opening quote (catches ?" " and ."")
     .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
-    // ANY punctuation + closing quote + capital I directly after
-    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s'])/g, "$1\n\n$2")
-    // ANY punctuation + closing quote + capital letter directly after
+    // Closing quote + optional space + capital I
+    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s''])/g, "$1\n\n$2")
+    // Closing quote + optional space + any capital letter
     .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
-    // Period directly followed by capital — no space
+    // Lowercase + period + capital (no space) — word.Word
     .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
-    // Period + I with no space
-    .replace(/([a-z][.!?])\s*(I[\s'])/g, "$1\n\n$2")
-    // Sentence end + space + new dialogue opening
+    // Lowercase + period + I (no space) — word.I
+    .replace(/([a-z][.!?])\s*(I[\s''])/g, "$1\n\n$2")
+    // Sentence end + space + new opening quote + capital
     .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
-    // Closing quote + space + narrative word
+    // Closing quote + space + narrative starter word
     .replace(
-      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
+      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There|This|That)\b/g,
       "$1\n\n$2"
     );
 
@@ -52,7 +52,7 @@ function splitIntoSentenceGroups(text: string): string[] {
   const merged: string[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    if (part.length < 4 && merged.length > 0) {
+    if (part.length < 5 && merged.length > 0) {
       merged[merged.length - 1] += " " + part;
     } else {
       merged.push(part);
@@ -72,9 +72,7 @@ interface ParsedNode {
 function parseInlineHtml(html: string): { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] {
   const runs: { text: string; bold?: boolean; italic?: boolean; underline?: boolean }[] = [];
 
-  let remaining = html;
-
-  remaining = remaining
+  let remaining = html
     .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, content) => {
       const text = stripTags(content);
       if (text) runs.push({ text, bold: true });
@@ -115,7 +113,7 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
   const pTagCount = (html.match(/<p[^>]*>/gi) ?? []).length;
   const contentLength = html.replace(/<[^>]+>/g, "").length;
   const avgParagraphLength = contentLength / Math.max(pTagCount, 1);
-  const needsSplitting = avgParagraphLength > 400;
+  const needsSplitting = avgParagraphLength > 150;
 
   const blockRegex = /<(h[1-6]|p|blockquote|hr)[^>]*>([\s\S]*?)<\/\1>|<hr\s*\/?>/gi;
   const matches = Array.from(html.matchAll(blockRegex));
@@ -124,7 +122,11 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
     const paragraphs = splitIntoSentenceGroups(html.replace(/<[^>]+>/g, ""));
     for (const p of paragraphs) {
       if (p.trim()) {
-        nodes.push({ type: "paragraph", text: p.trim(), runs: [{ text: p.trim() }] });
+        nodes.push({
+          type: "paragraph",
+          text: p.trim(),
+          runs: [{ text: p.trim() }],
+        });
       }
     }
     return nodes;
@@ -151,7 +153,8 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
     else if (tag === "h3") type = "heading3";
     else if (tag === "blockquote") type = "blockquote";
 
-    const subParagraphs = needsSplitting || text.length > 300
+    // Always try to split — even single paragraphs may have merged sentences
+    const subParagraphs = needsSplitting || text.length > 150
       ? splitIntoSentenceGroups(text)
       : [text];
 
@@ -162,9 +165,7 @@ function parseHtmlToNodes(html: string): ParsedNode[] {
         type: i === 0 ? type : "paragraph",
         text: trimmed,
         align,
-        runs: parseInlineHtml(inner).length > 1
-          ? parseInlineHtml(inner)
-          : [{ text: trimmed }],
+        runs: [{ text: trimmed }],
       });
     }
   }
@@ -263,8 +264,6 @@ function nodeToDocxParagraph(node: ParsedNode, isFirst: boolean): Paragraph {
   }
 }
 
-// ── Main route ─────────────────────────────────────────
-
 export async function GET(req: Request, { params }: RouteParams) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -309,7 +308,11 @@ export async function GET(req: Request, { params }: RouteParams) {
 
     if (docxParagraphs.length === 0) {
       docxParagraphs.push(new Paragraph({
-        children: [new TextRun({ text: "", font: "Times New Roman", size: 24 })],
+        children: [new TextRun({
+          text: "",
+          font: "Times New Roman",
+          size: 24,
+        })],
       }));
     }
 
