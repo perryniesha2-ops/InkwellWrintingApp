@@ -21,6 +21,30 @@ declare module "nodepub" {
   interface Nodepub {
     document(metadata: EPubMetadata, coverContent: string): EPubDocument;
   }
+  // Add to src/declarations.d.ts:
+declare module "html-to-docx" {
+  interface DocxOptions {
+    table?: { row?: { cantSplit?: boolean } };
+    footer?: boolean;
+    pageNumber?: boolean;
+    font?: string;
+    fontSize?: number;
+    margins?: {
+      top?: number;
+      right?: number;
+      bottom?: number;
+      left?: number;
+    };
+  }
+
+  function HTMLtoDOCX(
+    html: string,
+    headerHtml: string | null,
+    options?: DocxOptions
+  ): Promise<Buffer>;
+
+  export default HTMLtoDOCX;
+}
 
   const nodepub: Nodepub;
   export default nodepub;
