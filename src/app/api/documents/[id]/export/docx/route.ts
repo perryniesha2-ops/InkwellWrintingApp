@@ -93,30 +93,32 @@ function splitIntoSentenceGroups(text: string): string[] {
   if (!text) return [];
 
   let result = text
-    // Closing quote + space + opening quote (two dialogue lines together)
-    // "text." "More text." → split
-    .replace(/([.!?]["'\u201d\u2019])\s+(["'\u201c\u2018])/g, "$1\n\n$2")
-    // Closing quote directly followed by capital I or any capital
-    // "Goodnight."I → split
-    .replace(/([.!?]["'\u201d\u2019])(I\s|I'|[A-Z][a-z])/g, "$1\n\n$2")
-    // Period directly followed by capital I (I pull, I lean etc)
-    .replace(/([a-z][.!?])\s*(I\s|I'[a-z])/g, "$1\n\n$2")
-    // Period/punctuation directly followed by capital — no space
+    // ANY punctuation + closing quote + optional space + opening quote
+    // Covers: ?" " and ." " and !" "
+    .replace(/([.!?,]["'\u201d\u2019])\s*(["'\u201c\u2018])/g, "$1\n\n$2")
+    // ANY punctuation + closing quote + I (capital I directly after)
+    // Covers: ."I and ?"I and !"I
+    .replace(/([.!?]["'\u201d\u2019])\s*(I[\s'])/g, "$1\n\n$2")
+    // ANY punctuation + closing quote + capital letter directly after
+    .replace(/([.!?]["'\u201d\u2019])\s*([A-Z][a-z])/g, "$1\n\n$2")
+    // Period directly followed by capital — no space (word.Word)
     .replace(/([a-z][.!?])([A-Z][a-z])/g, "$1\n\n$2")
+    // Period + I with no space
+    .replace(/([a-z][.!?])\s*(I[\s'])/g, "$1\n\n$2")
+    // Sentence end + space + new dialogue opening
+    .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2")
     // Closing quote + space + narrative word
     .replace(
-      /([.!?]["'\u201d\u2019])\s+(He|She|I\s|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
+      /([.!?]["'\u201d\u2019])\s+(He|She|I\b|They|It|We|You|His|Her|The|A|An|My|Our|Your|Their|Then|But|And|So|When|As|After|Before|While|Now|Here|There)\b/g,
       "$1\n\n$2"
-    )
-    // Sentence end followed by new dialogue
-    .replace(/([.!?])\s+(["'\u201c\u2018][A-Z])/g, "$1\n\n$2");
+    );
 
   const parts = result
     .split(/\n\n+/)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
 
-  // Rejoin very short fragments
+  // Rejoin very short fragments under 4 chars
   const merged: string[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
