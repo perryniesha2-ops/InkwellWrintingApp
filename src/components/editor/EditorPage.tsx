@@ -689,12 +689,13 @@ setTotalWordCount(wordCount);
         style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}
       >
         {!focusMode && OutlinePanel && (
-          <OutlinePanel
-            editor={editor}
-            isOpen={outlineOpen}
-            onToggle={() => setOutlineOpen((o) => !o)}
-          />
-        )}
+  <OutlinePanel
+    editor={editor}
+    isOpen={outlineOpen}
+    onToggle={() => setOutlineOpen((o) => !o)}
+    documentId={doc?.id}  // ← add this
+  />
+)}
 
         <motion.div
           style={{
