@@ -72,6 +72,10 @@ const CoverUpload = dynamic(
   () => import("@/components/editor/CoverUpload"),
   { ssr: false }
 );
+const WritingGoalBar = dynamic(
+  () => import("@/components/editor/WritingGoalBar"),
+  { ssr: false }
+);
 
 interface Document {
   id: string;
@@ -210,6 +214,8 @@ export function EditorPage({ id }: EditorPageProps) {
 
  const coverButtonRef = useRef<HTMLButtonElement>(null);
 const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
+const [totalWordCount, setTotalWordCount] = useState(0);
+
 
   useEffect(() => {
     titleRef.current = title;
@@ -261,9 +267,10 @@ const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
     setSaving(true);
     try {
       const wordCount = contentRef.current
-        .replace(/<[^>]+>/g, " ")
-        .split(/\s+/)
-        .filter(Boolean).length;
+  .replace(/<[^>]+>/g, " ")
+  .split(/\s+/)
+  .filter(Boolean).length;
+setTotalWordCount(wordCount);
 
       if (docRef.current) {
         await fetch(`/api/documents/${docRef.current.id}`, {
@@ -315,6 +322,7 @@ const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
     setShowTemplates(false);
   };
 
+  
   const openRightPanel = (
     panel:
       | "chat"
@@ -331,6 +339,7 @@ const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
     setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
     setIllustratorOpen(panel === "illustrator" ? (o) => !o : false);
   };
+  
 
   const anyRightPanelOpen =
     (chatOpen ||
@@ -829,6 +838,15 @@ const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
             onClose={() => setReadabilityOpen(false)}
           />
         )}
+        {doc && WritingGoalBar && (
+  <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 30 }}>
+    <WritingGoalBar
+      documentId={doc.id}
+      currentWordCount={totalWordCount}
+      manuscriptTotal={totalWordCount}
+    />
+  </div>
+)}
       </div>
 
       {/* Template picker */}
