@@ -131,7 +131,7 @@ function CardEditor({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", }}>
 
       {/* Image area */}
       <div style={{ position: "relative", flexShrink: 0 }}>
@@ -204,18 +204,31 @@ function CardEditor({
       </div>
 
       {/* Notes */}
-      <div style={{ flex: 1 }}>
+      <div >
         <label style={{ display: "block", fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "4px" }}>
           Notes
         </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="What happens in this scene? Key moments, mood, goals..."
-          style={{ width: "100%", height: "120px", padding: "8px 10px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-primary)", fontSize: "13px", fontFamily: "var(--font-inter)", outline: "none", resize: "none", lineHeight: 1.6, boxSizing: "border-box" }}
-          onFocus={(e) => { e.target.style.borderColor = "var(--gold-primary)"; }}
-          onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; }}
-        />
+       <textarea
+  value={notes}
+  onChange={(e) => setNotes(e.target.value)}
+  placeholder="What happens in this scene? Key moments, mood, goals..."
+  style={{
+    width: "100%",
+    height: "140px",       // ← fixed height, not flex
+    padding: "8px 10px",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-color)",
+    color: "var(--text-primary)",
+    fontSize: "13px",
+    fontFamily: "var(--font-inter)",
+    outline: "none",
+    resize: "vertical",    // ← let writer resize if needed
+    lineHeight: 1.6,
+    boxSizing: "border-box" as const,
+  }}
+  onFocus={(e) => { e.target.style.borderColor = "var(--gold-primary)"; }}
+  onBlur={(e) => { e.target.style.borderColor = "var(--border-color)"; }}
+/>
       </div>
 
       {/* Actions */}
@@ -320,6 +333,7 @@ export default function StoryboardPanel({
             background: "var(--bg-surface)",
             display: "flex", flexDirection: "column",
             overflow: "hidden",
+            position: "relative",
           }}>
 
           {/* Header */}
@@ -410,7 +424,7 @@ export default function StoryboardPanel({
           )}
 
           {/* Card content */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "14px" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px", minHeight: 0,}}>
             {loading ? (
               <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
                 <Loader2 style={{ width: "20px", height: "20px", color: "var(--gold-primary)" }} className="animate-spin" />
