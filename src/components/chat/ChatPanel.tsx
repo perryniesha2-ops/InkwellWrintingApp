@@ -266,7 +266,7 @@ export default function ChatPanel({
           exit={{ opacity: 0, x: 320 }}
           transition={{ type: "spring", damping: 28, stiffness: 280 }}
           style={{
-            position: "fixed", right: 0, top: "48px", bottom: 0,
+            position: "fixed", right: 0, top: "48px", bottom: "48px",
             width: "340px", display: "flex", flexDirection: "column",
             zIndex: 40, background: "var(--bg-surface)",
             borderLeft: "1px solid var(--border-color)",
