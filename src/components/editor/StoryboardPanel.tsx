@@ -214,7 +214,7 @@ function CardEditor({
   placeholder="What happens in this scene? Key moments, mood, goals..."
   style={{
     width: "100%",
-    height: "140px",       // ← fixed height, not flex
+    height: "100px",       // ← fixed height, not flex
     padding: "8px 10px",
     background: "var(--bg-elevated)",
     border: "1px solid var(--border-color)",
