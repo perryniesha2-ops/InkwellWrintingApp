@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Clock,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────
@@ -122,6 +123,17 @@ interface BibleNote {
 interface StoryBible {
   id: string;
   documentId: string;
+}
+interface TimelineEvent {
+  id: string;
+  orderIndex: number;
+  timeLabel: string;
+  title: string;
+  description?: string | null;
+  characters?: string[] | null;
+  location?: string | null;
+  chapterRef?: string | null;
+  type?: string | null;
 }
 
 // ── Field components ───────────────────────────────────
@@ -347,7 +359,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "characters" | "outline" | "world" | "notes"
+    "characters" | "outline" | "world" | "notes" | "timeline"
   >("characters");
 
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -367,6 +379,10 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   const [activeNote, setActiveNote] = useState<BibleNote | null>(null);
   const [docTitle, setDocTitle] = useState("Your Story");
 
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
+
+
   // Load everything
   useEffect(() => {
     if (!user) return;
@@ -383,6 +399,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
           world: WorldEntry[];
           notes: BibleNote[];
           docTitle: string;
+          timeline?: TimelineEvent[];
         }) => {
           setBible(data.bible);
           setCharacters(data.characters ?? []);
@@ -390,6 +407,8 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
           setWorldEntries(data.world ?? []);
           setNotes(data.notes ?? []);
           setDocTitle(data.docTitle ?? "Your Story");
+          setTimelineEvents(data.timeline ?? []);
+
           setLoading(false);
         },
       )
@@ -643,6 +662,43 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
       </div>
     );
   }
+  const addTimelineEvent = async () => {
+  if (!bible) return;
+  const res = await fetch(`/api/bible/${bible.id}/timeline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      orderIndex: timelineEvents.length,
+      timeLabel: "Day 1",
+      title: "New Event",
+    }),
+  });
+  const event = await res.json() as TimelineEvent;
+  setTimelineEvents((prev) => [...prev, event]);
+  setActiveEvent(event);
+};
+
+const saveTimelineEvent = async (event: TimelineEvent) => {
+  setSaving(true);
+  try {
+    const res = await fetch(`/api/bible/${bible?.id}/timeline/${event.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    });
+    const updated = await res.json() as TimelineEvent;
+    setTimelineEvents((prev) => prev.map((e) => e.id === event.id ? updated : e));
+    setActiveEvent(updated);
+  } finally { setSaving(false); }
+};
+
+const deleteTimelineEvent = async (eventId: string) => {
+  if (!confirm("Delete this event?")) return;
+  await fetch(`/api/bible/${bible?.id}/timeline/${eventId}`, { method: "DELETE" });
+  setTimelineEvents((prev) => prev.filter((e) => e.id !== eventId));
+  setActiveEvent(null);
+};
+
 
   const TABS = [
     {
@@ -658,6 +714,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
       count: outlineSections.length,
     },
     { id: "world", label: "World", icon: Globe, count: worldEntries.length },
+    { id: "timeline",   label: "Timeline",   icon: Clock,     count: timelineEvents.length },
     { id: "notes", label: "Notes", icon: FileText, count: notes.length },
   ] as const;
 
@@ -890,12 +947,14 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
                 characters: () => void addCharacter(),
                 outline: () => void addSection(),
                 world: () => void addWorldEntry(),
+                timeline:   () => void addTimelineEvent(),
                 notes: () => void addNote(),
               };
               const addLabels: Record<string, string> = {
                 characters: "Add Character",
                 outline: "Add Chapter",
                 world: "Add Entry",
+                timeline:   "Add Event",
                 notes: "Add Note",
               };
               return (
@@ -1220,6 +1279,7 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
             background: "var(--bg-primary)",
           }}
         >
+          
           {/* Character detail */}
           {activeTab === "characters" && activeCharacter && (
             <div style={detailPadding}>
@@ -1994,6 +2054,47 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
               </Section>
             </div>
           )}
+          {/* Timeline list */}
+{activeTab === "timeline" && timelineEvents.map((event, i) => (
+  <button
+    key={event.id}
+    onClick={() => setActiveEvent(event)}
+    style={{
+      width: "100%", display: "flex", alignItems: "flex-start", gap: "10px",
+      padding: "10px 16px",
+      background: activeEvent?.id === event.id ? "var(--gold-subtle)" : "transparent",
+      border: "none",
+      borderLeft: activeEvent?.id === event.id ? "2px solid var(--gold-primary)" : "2px solid transparent",
+      cursor: "pointer", transition: "all 0.15s", textAlign: "left",
+    }}
+    onMouseEnter={(e) => {
+      if (activeEvent?.id !== event.id)
+        (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
+    }}
+    onMouseLeave={(e) => {
+      if (activeEvent?.id !== event.id)
+        (e.currentTarget as HTMLElement).style.background = "transparent";
+    }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+      <span style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, color: "var(--gold-primary)", whiteSpace: "nowrap" }}>
+        {event.timeLabel}
+      </span>
+      {i < timelineEvents.length - 1 && (
+        <div style={{ width: "1px", height: "16px", background: "var(--border-color)" }} />
+      )}
+    </div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <p style={{ fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {event.title}
+      </p>
+      {event.location && (
+        <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", margin: 0 }}>
+          {event.location}
+        </p>
+      )}
+    </div>
+  </button>
+))}
 
           {/* Notes detail */}
           {activeTab === "notes" && activeNote && (
@@ -2052,6 +2153,138 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
               />
             </div>
           )}
+          
+          {/* Timeline detail */}
+{activeTab === "timeline" && activeEvent && (
+  <div style={detailPadding}>
+    {detailHeader(
+      activeEvent.title || "Untitled Event",
+      () => void saveTimelineEvent(activeEvent),
+      () => void deleteTimelineEvent(activeEvent.id)
+    )}
+
+    {/* Time label */}
+    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1.5rem", padding: "12px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", borderLeft: "3px solid var(--gold-primary)" }}>
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", margin: "0 0 4px" }}>
+          When
+        </p>
+        <input
+          value={activeEvent.timeLabel ?? ""}
+          onChange={(e) => setActiveEvent({ ...activeEvent, timeLabel: e.target.value })}
+          placeholder="Day 1, That evening, Chapter 3..."
+          style={{ background: "transparent", border: "none", outline: "none", fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "1.1rem", color: "var(--gold-primary)", letterSpacing: "-0.01em", width: "100%" }}
+        />
+      </div>
+    </div>
+
+    <Section title="Event Details">
+      <Field
+        label="Event Title"
+        value={activeEvent.title ?? ""}
+        onChange={(v) => setActiveEvent({ ...activeEvent, title: v })}
+        placeholder="What happens?"
+      />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div>
+          <label style={{ display: "block", fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "4px" }}>
+            Type
+          </label>
+          <select
+            value={activeEvent.type ?? "event"}
+            onChange={(e) => setActiveEvent({ ...activeEvent, type: e.target.value })}
+            style={{ width: "100%", padding: "8px 10px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-primary)", fontSize: "13px", fontFamily: "var(--font-inter)", outline: "none" }}>
+            <option value="event">Event</option>
+            <option value="chapter">Chapter</option>
+            <option value="flashback">Flashback</option>
+            <option value="backstory">Backstory</option>
+            <option value="turning_point">Turning Point</option>
+            <option value="black_moment">Black Moment</option>
+            <option value="resolution">Resolution</option>
+          </select>
+        </div>
+        <Field
+          label="Chapter Reference"
+          value={activeEvent.chapterRef ?? ""}
+          onChange={(v) => setActiveEvent({ ...activeEvent, chapterRef: v })}
+          placeholder="Chapter 3..."
+        />
+      </div>
+      <Field
+        label="Location"
+        value={activeEvent.location ?? ""}
+        onChange={(v) => setActiveEvent({ ...activeEvent, location: v })}
+        placeholder="Where does this happen?"
+      />
+      <Field
+        label="Characters Involved (comma separated)"
+        value={activeEvent.characters?.join(", ") ?? ""}
+        onChange={(v) => setActiveEvent({ ...activeEvent, characters: v.split(",").map((c) => c.trim()).filter(Boolean) })}
+        placeholder="Tamira, Dmitriy..."
+      />
+      <Field
+        label="Description"
+        value={activeEvent.description ?? ""}
+        onChange={(v) => setActiveEvent({ ...activeEvent, description: v })}
+        multiline
+        placeholder="What happens in this event? What changes?"
+      />
+    </Section>
+
+    {/* Move earlier / later */}
+    <div style={{ marginTop: "12px", display: "flex", gap: "6px" }}>
+      <button
+        onClick={() => {
+          const idx = timelineEvents.findIndex((e) => e.id === activeEvent.id);
+          if (idx === 0) return;
+          const newEvents = [...timelineEvents];
+          [newEvents[idx - 1], newEvents[idx]] = [newEvents[idx], newEvents[idx - 1]];
+          setTimelineEvents(newEvents.map((e, i) => ({ ...e, orderIndex: i })));
+          void saveTimelineEvent({ ...activeEvent, orderIndex: idx - 1 });
+        }}
+        disabled={timelineEvents.findIndex((e) => e.id === activeEvent.id) === 0}
+        style={{ flex: 1, padding: "7px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-muted)", cursor: "pointer", fontSize: "12px", fontFamily: "var(--font-inter)" }}>
+        ↑ Move Earlier
+      </button>
+      <button
+        onClick={() => {
+          const idx = timelineEvents.findIndex((e) => e.id === activeEvent.id);
+          if (idx === timelineEvents.length - 1) return;
+          const newEvents = [...timelineEvents];
+          [newEvents[idx], newEvents[idx + 1]] = [newEvents[idx + 1], newEvents[idx]];
+          setTimelineEvents(newEvents.map((e, i) => ({ ...e, orderIndex: i })));
+          void saveTimelineEvent({ ...activeEvent, orderIndex: idx + 1 });
+        }}
+        disabled={timelineEvents.findIndex((e) => e.id === activeEvent.id) === timelineEvents.length - 1}
+        style={{ flex: 1, padding: "7px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-muted)", cursor: "pointer", fontSize: "12px", fontFamily: "var(--font-inter)" }}>
+        ↓ Move Later
+      </button>
+    </div>
+  </div>
+)}
+
+{/* Timeline empty state */}
+{activeTab === "timeline" && !activeEvent && (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "3rem" }}>
+    <Clock style={{ width: "40px", height: "40px", color: "var(--gold-primary)", opacity: 0.3, marginBottom: "1rem" }} />
+    <h3 style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "1.1rem", color: "var(--text-primary)", marginBottom: "8px" }}>
+      {timelineEvents.length === 0 ? "No events yet" : "Select an event"}
+    </h3>
+    <p style={{ fontSize: "13px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", marginBottom: "1.5rem" }}>
+      {timelineEvents.length === 0
+        ? "Map out your story's events in chronological order."
+        : "Choose an event from the list to view details."}
+    </p>
+    {timelineEvents.length === 0 && (
+      <button
+        onClick={() => void addTimelineEvent()}
+        style={{ padding: "10px 20px", background: "var(--gold-primary)", color: "var(--bg-primary)", border: "none", cursor: "pointer", fontSize: "13px", fontFamily: "var(--font-inter)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "8px" }}>
+        <Plus style={{ width: "14px", height: "14px" }} />
+        Add First Event
+      </button>
+    )}
+  </div>
+)}
 
           {/* Empty states */}
           {activeTab === "characters" && !activeCharacter && (
