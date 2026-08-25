@@ -465,7 +465,7 @@ export default function ChatPanel({
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: "12px", minHeight: 0 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px", paddingBottom: "24px", display: "flex", flexDirection: "column", gap: "12px", minHeight: 0 }}>
             {messages.length === 0 && (
               <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
                 <Bot style={{ width: "32px", height: "32px", color: "var(--gold-primary)", opacity: 0.3, margin: "0 auto 1rem" }} />
