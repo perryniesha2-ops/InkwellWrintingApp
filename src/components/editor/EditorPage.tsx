@@ -223,6 +223,8 @@ export function EditorPage({ id }: EditorPageProps) {
 const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
 const [totalWordCount, setTotalWordCount] = useState(0);
 const [storyboardOpen, setStoryboardOpen] = useState(false);
+const [chatSelectedText, setChatSelectedText] = useState("");
+
 
 
 
@@ -270,6 +272,20 @@ const [storyboardOpen, setStoryboardOpen] = useState(false);
       .then((data: { context: string }) => setBibleContext(data.context ?? ""))
       .catch(() => {});
   }, [doc?.id]);
+
+
+useEffect(() => {
+  if (!editor) return;
+  const updateSelection = () => {
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+    const text = editor.state.doc.textBetween(from, to, " ").trim();
+    if (text.length > 20) setChatSelectedText(text);
+  };
+  editor.on("selectionUpdate", updateSelection);
+  return () => { editor.off("selectionUpdate", updateSelection); };
+}, [editor]);
+
 
   const saveDocument = useCallback(async () => {
     if (!user) return;
@@ -823,16 +839,17 @@ setTotalWordCount(wordCount);
         </AnimatePresence>
 
         {/* Right panels */}
-        {!focusMode && ChatPanel && (
-          <ChatPanel
-            documentContent={content}
-            documentId={doc?.id}
-            genre={genre}
-            bibleContext={bibleContext}
-            isOpen={chatOpen}
-            onToggle={() => openRightPanel("chat")}
-          />
-        )}
+        {ChatPanel && (
+  <ChatPanel
+    documentContent={content}
+    documentId={doc?.id}
+    genre={genre}
+    bibleContext={bibleContext}
+    isOpen={chatOpen}
+    onToggle={() => openRightPanel("chat")}
+    selectedText={chatSelectedText}
+  />
+)}
         {ConsistencyChecker && (
           <ConsistencyChecker
             content={content}

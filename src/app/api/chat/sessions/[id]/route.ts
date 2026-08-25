@@ -38,3 +38,16 @@ export async function PATCH(req: Request, { params }: RouteParams) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(req: Request, { params }: RouteParams) {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+
+  await supabase.from("chat_messages").delete().eq("session_id", id);
+  await supabase.from("chat_sessions").delete().eq("id", id);
+
+  return NextResponse.json({ success: true });
+}
