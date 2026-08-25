@@ -141,7 +141,7 @@ function CardEditor({
             <img
               src={imageUrl}
               alt={title}
-              style={{ width: "100%", height: "200px", objectFit: "cover", display: "block", border: "1px solid var(--border-color)" }}
+              style={{ width: "100%", height: "160px", objectFit: "cover", display: "block", border: "1px solid var(--border-color)" }}
             />
             <div style={{ position: "absolute", top: "8px", right: "8px", display: "flex", gap: "4px" }}>
               <button
@@ -160,7 +160,7 @@ function CardEditor({
           <div
             onClick={() => fileInputRef.current?.click()}
             style={{
-              height: "160px", border: "1px dashed var(--border-color)",
+              height: "120px", border: "1px dashed var(--border-color)",
               display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center", gap: "8px",
               background: "var(--bg-elevated)", cursor: "pointer",
@@ -424,7 +424,7 @@ export default function StoryboardPanel({
           )}
 
           {/* Card content */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "14px", minHeight: 0,}}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px", paddingBottom: "80px", minHeight: 0,}}>
             {loading ? (
               <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
                 <Loader2 style={{ width: "20px", height: "20px", color: "var(--gold-primary)" }} className="animate-spin" />
