@@ -26,6 +26,8 @@ import type { Template } from "@/lib/templates";
 import { useEditorPrefs } from "@/hooks/useEditorPrefs";
 import { BookText } from "lucide-react";
 import { Palette } from "lucide-react";
+import { LayoutTemplate } from "lucide-react";
+
 
 const WritingEditor = dynamic(
   () => import("@/components/editor/WritingEditor"),
@@ -76,6 +78,11 @@ const WritingGoalBar = dynamic(
   () => import("@/components/editor/WritingGoalBar"),
   { ssr: false }
 );
+const StoryboardPanel = dynamic(
+  () => import("@/components/editor/StoryboardPanel"),
+  { ssr: false }
+);
+
 
 interface Document {
   id: string;
@@ -215,6 +222,8 @@ export function EditorPage({ id }: EditorPageProps) {
  const coverButtonRef = useRef<HTMLButtonElement>(null);
 const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
 const [totalWordCount, setTotalWordCount] = useState(0);
+const [storyboardOpen, setStoryboardOpen] = useState(false);
+
 
 
   useEffect(() => {
@@ -330,7 +339,8 @@ setTotalWordCount(wordCount);
       | "grammar"
       | "readability"
       | "thesaurus"
-      | "illustrator",
+      | "illustrator"
+      | "storyboard",
   ) => {
     setChatOpen(panel === "chat" ? (o) => !o : false);
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
@@ -338,6 +348,7 @@ setTotalWordCount(wordCount);
     setReadabilityOpen(panel === "readability" ? (o) => !o : false);
     setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
     setIllustratorOpen(panel === "illustrator" ? (o) => !o : false);
+    setStoryboardOpen(panel === "storyboard" ? (o) => !o : false);
   };
   
 
@@ -347,7 +358,8 @@ setTotalWordCount(wordCount);
       readabilityOpen ||
       grammarOpen ||
       thesaurusOpen ||
-      illustratorOpen) &&
+      illustratorOpen ||
+      storyboardOpen) &&
     !focusMode;
 
   if (loading) {
@@ -800,6 +812,12 @@ setTotalWordCount(wordCount);
                 active={chatOpen}
                 onClick={() => openRightPanel("chat")}
               />
+              <ActionButton
+                icon={LayoutTemplate}
+                label="Storyboard"
+                active={storyboardOpen}
+                onClick={() => openRightPanel("storyboard")}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -847,6 +865,13 @@ setTotalWordCount(wordCount);
       manuscriptTotal={totalWordCount}
     />
   </div>
+)}
+{doc && StoryboardPanel && (
+  <StoryboardPanel
+    documentId={doc.id}
+    isOpen={storyboardOpen}
+    onClose={() => setStoryboardOpen(false)}
+  />
 )}
       </div>
 
