@@ -548,7 +548,7 @@ export default function ChatPanel({
           </div>
 
           {/* Input */}
-          <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-color)", flexShrink: 0 }}>
+          <div style={{ padding: "12px 14px", paddingBottom: "80px", borderTop: "1px solid var(--border-color)", flexShrink: 0 }}>
             {/* Show active context indicator */}
             {manuscriptLoaded && (
               <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
