@@ -74,10 +74,7 @@ const CoverUpload = dynamic(
   () => import("@/components/editor/CoverUpload"),
   { ssr: false }
 );
-const WritingGoalBar = dynamic(
-  () => import("@/components/editor/WritingGoalBar"),
-  { ssr: false }
-);
+
 const StoryboardPanel = dynamic(
   () => import("@/components/editor/StoryboardPanel"),
   { ssr: false }
@@ -879,15 +876,7 @@ setTotalWordCount(wordCount);
             onClose={() => setReadabilityOpen(false)}
           />
         )}
-        {doc && WritingGoalBar && (
-  <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 30 }}>
-    <WritingGoalBar
-      documentId={doc.id}
-      currentWordCount={totalWordCount}
-      manuscriptTotal={totalWordCount}
-    />
-  </div>
-)}
+       
 {doc && StoryboardPanel && (
   <StoryboardPanel
     documentId={doc.id}
