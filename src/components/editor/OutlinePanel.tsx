@@ -257,7 +257,7 @@ useEffect(() => {
             </div>
 
             {/* Content */}
-            <div style={{ flex: 1, overflowY: "auto", minHeight: 0, overflowX: "hidden", }}>
+            <div style={{ flex: 1, overflowY: "scroll", minHeight: 0, overflowX: "hidden", }}>
 
               {/* Document tab — headings from editor */}
               {tab === "document" && (
