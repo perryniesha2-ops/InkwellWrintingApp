@@ -714,7 +714,7 @@ setTotalWordCount(wordCount);
 
       {/* Main layout */}
       <div
-        style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}
+        style={{ display: "flex", flex: 1,  minHeight: 0, position: "relative",overflow: "hidden", }}
       >
         {!focusMode && OutlinePanel && (
   <OutlinePanel

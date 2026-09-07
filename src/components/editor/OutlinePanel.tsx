@@ -172,17 +172,20 @@ useEffect(() => {
       <AnimatePresence>
         {(isOpen || pinned) && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: panelWidth, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", damping: 28, stiffness: 280 }}
-            style={{
-              flexShrink: 0, height: "100%",
-              borderRight: "1px solid var(--border-color)",
-              background: "var(--bg-surface)",
-              display: "flex", flexDirection: "column",
-              overflow: "hidden",
-            }}>
+  initial={{ width: 0, opacity: 0 }}
+  animate={{ width: panelWidth, opacity: 1 }}
+  exit={{ width: 0, opacity: 0 }}
+  transition={{ type: "spring", damping: 28, stiffness: 280 }}
+  style={{
+    flexShrink: 0,
+    height: "100%",
+    maxHeight: "100%",      
+    borderRight: "1px solid var(--border-color)",
+    background: "var(--bg-surface)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",    
+  }}>
 
             {/* Header */}
             <div style={{
@@ -254,7 +257,7 @@ useEffect(() => {
             </div>
 
             {/* Content */}
-            <div style={{ flex: 1, overflowY: "auto" }}>
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0, overflowX: "hidden", }}>
 
               {/* Document tab — headings from editor */}
               {tab === "document" && (
