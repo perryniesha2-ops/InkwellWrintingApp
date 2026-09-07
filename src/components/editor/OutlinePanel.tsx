@@ -126,18 +126,20 @@ export default function OutlinePanel({
 
   return (
     <div style={{ display: "flex", height: "100%", flexShrink: 0 }}>
-      {/* Panel */}
-      {visible && (
-        <div style={{
-          width: "240px",
-          height: "100%",
-          borderRight: "1px solid var(--border-color)",
-          background: "var(--bg-surface)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          flexShrink: 0,
-        }}>
+  {visible && (
+    <div style={{
+      width: "240px",
+      minWidth: "240px",
+      maxWidth: "240px",
+      height: "100%",          // ← must be 100%
+      maxHeight: "100%",       // ← add this
+      borderRight: "1px solid var(--border-color)",
+      background: "var(--bg-surface)",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",      // ← panel clips its children
+      flexShrink: 0,
+    }}>
 
           {/* Header */}
           <div style={{
@@ -201,11 +203,12 @@ export default function OutlinePanel({
 
           {/* Scrollable content */}
           <div style={{
-            flex: 1,
-            overflowY: "auto",
-            overflowX: "hidden",
-            minHeight: 0,
-          }}>
+  flex: 1,
+  overflowY: "auto",
+  overflowX: "hidden",
+  minHeight: 0,          // ← this is the critical line
+  height: 0,             // ← add this alongside minHeight: 0
+}}>
 
             {/* Document tab */}
             {tab === "document" && (

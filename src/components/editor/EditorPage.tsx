@@ -713,9 +713,14 @@ setTotalWordCount(wordCount);
       </AnimatePresence>
 
       {/* Main layout */}
-      <div
-        style={{ display: "flex", flex: 1,  minHeight: 0, position: "relative",overflow: "hidden", }}
-      >
+     <div style={{
+  display: "flex",
+  flex: 1,
+  minHeight: 0,
+  height: "100%",        // ← add this
+  overflow: "hidden",    // ← add this back
+  position: "relative",
+}}>
         {!focusMode && OutlinePanel && (
   <OutlinePanel
     editor={editor}
