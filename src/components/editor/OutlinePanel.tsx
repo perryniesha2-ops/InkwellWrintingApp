@@ -202,12 +202,12 @@ export default function OutlinePanel({
           </div>
 
           {/* Scrollable content */}
-          <div style={{
-  flex: 1,
+<div style={{
+  flexGrow: 1,      // take up remaining space in the flex column
+  flexShrink: 1,    // allow shrinking
+  flexBasis: 0,     // start from zero height, grow from there
   overflowY: "auto",
   overflowX: "hidden",
-  minHeight: 0,          // ← this is the critical line
-  height: 0,             // ← add this alongside minHeight: 0
 }}>
 
             {/* Document tab */}
