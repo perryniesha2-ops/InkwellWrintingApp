@@ -714,7 +714,7 @@ setTotalWordCount(wordCount);
 
       {/* Main layout */}
       <div
-        style={{ display: "flex", flex: 1,  minHeight: 0, position: "relative",}}
+        style={{ display: "flex", flex: 1,  minHeight: 0, position: "relative",overflow: "hidden", }}
       >
         {!focusMode && OutlinePanel && (
   <OutlinePanel
@@ -727,13 +727,11 @@ setTotalWordCount(wordCount);
 
         <motion.div
           style={{
-             flexShrink: 0,
-    height: "100%",
-    borderRight: "1px solid var(--border-color)",
-    background: "var(--bg-surface)",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "hidden",
           }}
           animate={{ marginRight: anyRightPanelOpen ? "320px" : "0" }}
           transition={{ type: "spring", damping: 28, stiffness: 280 }}
