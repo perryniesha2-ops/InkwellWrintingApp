@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, FileText, File, Loader2, BookOpen } from "lucide-react";
+import { Download, FileText, Printer, Loader2, BookOpen } from "lucide-react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 
@@ -22,11 +22,14 @@ const EpubExportModal = dynamic(
   () => import("@/components/editor/EpubExportModal"),
   { ssr: false }
 );
+const PrintExportDialog = dynamic(
+  () => import("@/components/editor/PrintExportDialog"),
+  { ssr: false }
+);
 
 export default function ExportMenu({
   title,
   content,
-  genre,
   documentId,
 }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
@@ -34,6 +37,7 @@ export default function ExportMenu({
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [epubModalOpen, setEpubModalOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
 
 
   useEffect(() => {
@@ -72,22 +76,6 @@ export default function ExportMenu({
     const div = document.createElement("div");
     div.innerHTML = content;
     return div.innerText;
-  };
-
-  const buildSectionHtml = (
-    sections: DocumentSection[],
-    docTitle: string,
-    docGenre?: string,
-  ) => {
-    return sections
-      .map((s) => {
-        if (s.type === "cover")
-          return `<div class="title-page"><h1>${docTitle}</h1>${s.content ? `<p>${s.content}</p>` : ""}${docGenre ? `<p class="genre">${docGenre}</p>` : ""}</div>`;
-        if (s.type === "table_of_contents")
-          return `<div style="page-break-after:always;"><h2>${s.title || "Table of Contents"}</h2></div>`;
-        return `<div style="page-break-after:always;">${s.title ? `<h2>${s.title}</h2>` : ""}<div>${s.content.replace(/\n/g, "<br/>")}</div></div>`;
-      })
-      .join("");
   };
 
   const handleTxt = async () => {
@@ -144,93 +132,8 @@ const handleEpub = async () => {
     setExporting(null);
   }
 };
-  const handlePdf = async () => {
-    setOpen(false);
-    setExporting("pdf");
-    try {
-      const sections = await getSections();
-      const hasCover = sections.some((s) => s.type === "cover");
-      const frontMatter = buildSectionHtml(sections, title, genre);
-      const win = window.open("", "_blank");
-      if (!win) {
-        alert("Allow pop-ups to export PDF.");
-        return;
-      }
-      win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-        <style>
-          * { margin:0; padding:0; box-sizing:border-box; }
-          body { font-family:'Cormorant Garamond',Georgia,serif; font-size:12pt; line-height:1.8; color:#111; padding:1in; max-width:8.5in; margin:0 auto; }
-          h1 { font-size:24pt; margin:2em 0 1em; page-break-after:avoid; }
-          h2 { font-size:18pt; margin:1.5em 0 0.75em; }
-          p { margin-bottom:1em; text-align:justify; }
-          .title-page { text-align:center; padding-top:3in; page-break-after:always; }
-          .title-page h1 { font-size:32pt; }
-          @page { margin:1in; }
-          @media print { h1 { page-break-before:always; } h1:first-of-type { page-break-before:avoid; } }
-        </style></head><body>
-        ${frontMatter}
-        ${!hasCover ? `<div class="title-page"><h1>${title}</h1>${genre ? `<p>${genre}</p>` : ""}</div>` : ""}
-        ${content}
-      </body></html>`);
-      win.document.close();
-      win.focus();
-      setTimeout(() => {
-        win.print();
-        win.close();
-      }, 1000);
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const handleDocx = async () => {
-    setExporting("docx");
-  try {
-    if (!documentId) {
-      alert("Save your document first before exporting.");
-      return;
-    }
-
-    // Warn about paragraph formatting
-    const hasLongParagraphs = content && 
-      content.split(/<\/p>/i).some(p => p.replace(/<[^>]+>/g, "").length > 500);
-    
-    if (hasLongParagraphs) {
-      const proceed = confirm(
-        "Some paragraphs look like they may have merged sentences.\n\nFor best results, use the Fix Paragraphs button (¶) in the toolbar first, then export.\n\nExport anyway?"
-      );
-      if (!proceed) {
-        setExporting(null);
-        return;
-      }
-    }
-
-
-    const response = await fetch(`/api/documents/${documentId}/export/docx`);
-    if (!response.ok) {
-      const err = await response.json() as { error: string };
-      throw new Error(err.error ?? "Export failed");
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(title || "manuscript").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("DOCX export error:", err);
-    alert("DOCX export failed. Please try again.");
-  } finally {
-    setExporting(null);
-  }
-};
   const ITEMS = [
-  { label: "Word Document", ext: ".docx", icon: File,     action: handleDocx, note: "" },
+  { label: "Print & Manuscript", ext: "PDF / DOCX", icon: Printer, action: () => { setOpen(false); setPrintOpen(true); }, note: "KDP paperback or agent submission" },
   { label: "EPUB",          ext: ".epub", icon: BookOpen, action: () => { setOpen(false); setEpubModalOpen(true); }, note: "For proofing & ARC copies" },
   { label: "Plain Text",    ext: ".txt",  icon: FileText, action: handleTxt,  note: "" },
 ];
@@ -329,10 +232,13 @@ const handleEpub = async () => {
     <span style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "var(--font-inter)" }}>{ext}</span>
   </button>
 ))}
-\          </div>,
+          </div>,
           document.body,
         )}
         {/* EPUB modal */}
+    {printOpen && documentId && (
+      <PrintExportDialog documentId={documentId} onClose={() => setPrintOpen(false)} />
+    )}
     {epubModalOpen && documentId && (
       <EpubExportModal
         isOpen={epubModalOpen}
