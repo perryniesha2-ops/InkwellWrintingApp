@@ -1,12 +1,17 @@
-export type Theme = "default" | "light";
+export type Theme = "default" | "light" | "white" | "graphite" | "blue" | "purple";
 
+/** Palettes live in globals.css under [data-theme="…"]; preview = [background, accent]. */
 export const THEMES: {
   value: Theme;
   label: string;
   preview: [string, string];
 }[] = [
   { value: "default", label: "Dark", preview: ["#1c1c1e", "#d4a843"] },
+  { value: "graphite", label: "Dark Gray", preview: ["#2a2b2f", "#e0b450"] },
+  { value: "blue", label: "Blue", preview: ["#0f1726", "#6eacff"] },
+  { value: "purple", label: "Purple", preview: ["#1b1526", "#bb98f6"] },
   { value: "light", label: "Light", preview: ["#f5f5f5", "#b8922a"] },
+  { value: "white", label: "White", preview: ["#ffffff", "#8f6c12"] },
 ];
 
 const STORAGE_KEY = "prosr-theme";

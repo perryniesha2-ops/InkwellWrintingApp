@@ -156,40 +156,60 @@ export default function EditorSettings({
                   Theme
                 </p>
                 <div
+                  role="radiogroup"
+                  aria-label="Theme"
                   style={{
-                    display: "flex",
-                    background: "var(--bg-elevated)",
-                    border: "1px solid var(--border-color)",
-                    padding: "3px",
-                    gap: "2px",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "6px",
                   }}
                 >
-                  {THEMES.map((t) => (
-                    <button
-                      key={t.value}
-                      onClick={() => changeTheme(t.value as Theme)}
-                      style={{
-                        flex: 1,
-                        padding: "6px 8px",
-                        fontSize: "11px",
-                        fontFamily: "Inter",
-                        fontWeight: 600,
-                        border: "none",
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                        background:
-                          theme === t.value
-                            ? "var(--gold-primary)"
-                            : "transparent",
-                        color:
-                          theme === t.value
-                            ? "var(--bg-primary)"
-                            : "var(--text-muted)",
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                  {THEMES.map((t) => {
+                    const selected = theme === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => changeTheme(t.value as Theme)}
+                        title={t.label}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "8px 4px 6px",
+                          fontSize: "11px",
+                          fontFamily: "Inter",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                          background: selected ? "var(--gold-subtle)" : "var(--bg-elevated)",
+                          border: `1px solid ${selected ? "var(--gold-primary)" : "var(--border-color)"}`,
+                          color: selected ? "var(--text-primary)" : "var(--text-muted)",
+                        }}
+                      >
+                        {/* Swatch: the theme's page colour with its accent */}
+                        <span
+                          aria-hidden
+                          style={{
+                            width: "100%",
+                            height: "26px",
+                            background: t.preview[0],
+                            border: "1px solid rgba(128,128,128,0.35)",
+                            display: "flex",
+                            alignItems: "flex-end",
+                            padding: "4px",
+                            gap: "3px",
+                          }}
+                        >
+                          <span style={{ width: "40%", height: "3px", background: t.preview[1] }} />
+                          <span style={{ width: "20%", height: "3px", background: t.preview[1], opacity: 0.5 }} />
+                        </span>
+                        {t.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
