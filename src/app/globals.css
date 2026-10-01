@@ -149,6 +149,203 @@
     --bubble-ai-bg: #f0f0f0;
   }
 
+  /* ── Additional themes (generated from one palette each; see src/lib/theme.ts) ── */
+
+  /* White: bright paper, high contrast */
+  [data-theme="white"] {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 8%;
+    --popover: 0 0% 98%;
+    --popover-foreground: 0 0% 8%;
+    --primary: 43 78% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 24%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 37%;
+    --accent: 0 0% 91%;
+    --accent-foreground: 0 0% 8%;
+    --border: 0 0% 89%;
+    --input: 0 0% 95%;
+    --ring: 43 78% 32%;
+
+    --bg-primary: #ffffff;
+    --bg-surface: #fafafa;
+    --bg-elevated: #f2f2f2;
+    --bg-overlay: #e9e9e9;
+
+    /* The accent keeps the historical "gold" token names. */
+    --gold-primary: #8f6c12;
+    --gold-light: #a9821e;
+    --gold-deep: #6e520c;
+    --gold-subtle: rgba(143, 108, 18, 0.08);
+    --gold-border: rgba(143, 108, 18, 0.25);
+    --gold-glow: rgba(143, 108, 18, 0.15);
+
+    --text-primary: #141414;
+    --text-secondary: #3d3d3d;
+    --text-muted: #5f5f5f;
+    --text-dim: #8a8a8a;
+
+    --border-color: #e3e3e3;
+    --border-subtle: #efefef;
+
+    --topbar-bg: rgba(255, 255, 255, 0.95);
+    --panel-bg: #fafafa;
+    --prose-color: #141414;
+    --placeholder-color: #a6a6a6;
+    --bubble-ai-bg: #f2f2f2;
+  }
+
+  /* Dark gray: softer than Dark, less contrast glare */
+  [data-theme="graphite"] {
+    color-scheme: dark;
+    --background: 228 6% 17%;
+    --foreground: 240 4% 95%;
+    --card: 230 6% 21%;
+    --card-foreground: 240 4% 95%;
+    --popover: 230 6% 21%;
+    --popover-foreground: 240 4% 95%;
+    --primary: 42 70% 60%;
+    --primary-foreground: 228 6% 17%;
+    --secondary: 230 5% 24%;
+    --secondary-foreground: 240 4% 73%;
+    --muted: 230 5% 24%;
+    --muted-foreground: 240 3% 60%;
+    --accent: 231 5% 28%;
+    --accent-foreground: 240 4% 95%;
+    --border: 231 5% 27%;
+    --input: 230 5% 24%;
+    --ring: 42 70% 60%;
+
+    --bg-primary: #2a2b2f;
+    --bg-surface: #323338;
+    --bg-elevated: #3a3b40;
+    --bg-overlay: #43444a;
+
+    /* The accent keeps the historical "gold" token names. */
+    --gold-primary: #e0b450;
+    --gold-light: #ecc76e;
+    --gold-deep: #b58a2c;
+    --gold-subtle: rgba(224, 180, 80, 0.12);
+    --gold-border: rgba(224, 180, 80, 0.25);
+    --gold-glow: rgba(224, 180, 80, 0.15);
+
+    --text-primary: #f2f2f3;
+    --text-secondary: #b8b8bd;
+    --text-muted: #95959c;
+    --text-dim: #6c6c73;
+
+    --border-color: #414248;
+    --border-subtle: #36373c;
+
+    --topbar-bg: rgba(42, 43, 47, 0.95);
+    --panel-bg: #323338;
+    --prose-color: #ececee;
+    --placeholder-color: #6c6c73;
+    --bubble-ai-bg: #3a3b40;
+  }
+
+  /* Blue: midnight navy with a sky-blue accent */
+  [data-theme="blue"] {
+    color-scheme: dark;
+    --background: 219 43% 10%;
+    --foreground: 217 62% 96%;
+    --card: 219 43% 15%;
+    --card-foreground: 217 62% 96%;
+    --popover: 219 43% 15%;
+    --popover-foreground: 217 62% 96%;
+    --primary: 214 100% 72%;
+    --primary-foreground: 219 43% 10%;
+    --secondary: 219 41% 18%;
+    --secondary-foreground: 216 30% 75%;
+    --muted: 219 41% 18%;
+    --muted-foreground: 216 23% 58%;
+    --accent: 220 39% 22%;
+    --accent-foreground: 217 62% 96%;
+    --border: 218 36% 22%;
+    --input: 219 41% 18%;
+    --ring: 214 100% 72%;
+
+    --bg-primary: #0f1726;
+    --bg-surface: #152035;
+    --bg-elevated: #1b2841;
+    --bg-overlay: #22314e;
+
+    /* The accent keeps the historical "gold" token names. */
+    --gold-primary: #6eacff;
+    --gold-light: #98c4ff;
+    --gold-deep: #3f83de;
+    --gold-subtle: rgba(110, 172, 255, 0.12);
+    --gold-border: rgba(110, 172, 255, 0.25);
+    --gold-glow: rgba(110, 172, 255, 0.15);
+
+    --text-primary: #eef3fb;
+    --text-secondary: #aebdd3;
+    --text-muted: #7d90ad;
+    --text-dim: #566a87;
+
+    --border-color: #24334c;
+    --border-subtle: #1a263b;
+
+    --topbar-bg: rgba(15, 23, 38, 0.95);
+    --panel-bg: #152035;
+    --prose-color: #e4ecf7;
+    --placeholder-color: #566a87;
+    --bubble-ai-bg: #1b2841;
+  }
+
+  /* Purple: deep plum with a lavender accent */
+  [data-theme="purple"] {
+    color-scheme: dark;
+    --background: 261 29% 12%;
+    --foreground: 265 60% 96%;
+    --card: 262 29% 15%;
+    --card-foreground: 265 60% 96%;
+    --popover: 262 29% 15%;
+    --popover-foreground: 265 60% 96%;
+    --primary: 262 84% 78%;
+    --primary-foreground: 261 29% 12%;
+    --secondary: 262 27% 18%;
+    --secondary-foreground: 264 29% 77%;
+    --muted: 262 27% 18%;
+    --muted-foreground: 264 19% 59%;
+    --accent: 263 26% 22%;
+    --accent-foreground: 265 60% 96%;
+    --border: 261 29% 23%;
+    --input: 262 27% 18%;
+    --ring: 262 84% 78%;
+
+    --bg-primary: #1b1526;
+    --bg-surface: #231b31;
+    --bg-elevated: #2b223b;
+    --bg-overlay: #342946;
+
+    /* The accent keeps the historical "gold" token names. */
+    --gold-primary: #bb98f6;
+    --gold-light: #d2bafa;
+    --gold-deep: #8f66d6;
+    --gold-subtle: rgba(187, 152, 246, 0.12);
+    --gold-border: rgba(187, 152, 246, 0.25);
+    --gold-glow: rgba(187, 152, 246, 0.15);
+
+    --text-primary: #f4effb;
+    --text-secondary: #c2b5d6;
+    --text-muted: #9282aa;
+    --text-dim: #6a5b82;
+
+    --border-color: #35294b;
+    --border-subtle: #281f38;
+
+    --topbar-bg: rgba(27, 21, 38, 0.95);
+    --panel-bg: #231b31;
+    --prose-color: #ece5f6;
+    --placeholder-color: #6a5b82;
+    --bubble-ai-bg: #2b223b;
+  }
+
   * {
     @apply border-border outline-ring/50;
     box-sizing: border-box;
@@ -530,4 +727,41 @@ margin-bottom: 1.6em;
     line-height: 0.85;
     margin: 0.05em 0.1em 0 0;
   }
+}
+/* Smart Text: story element mentions in the editor */
+.editor-prose .smart-link {
+  text-decoration: underline dotted var(--gold-primary);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.editor-prose .smart-link:hover {
+  background: var(--gold-subtle);
+}
+
+/* Live collaboration: other writers' cursors and selections */
+.collaboration-carets__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  padding: 1px 6px;
+  border-radius: 3px 3px 3px 0;
+  color: #fff;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  user-select: none;
 }

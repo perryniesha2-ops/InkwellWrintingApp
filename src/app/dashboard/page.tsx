@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Feather, Plus, Clock, Loader2, LogOut,
-  BookMarked, ArrowRight, Trash2,
+  BookMarked, ArrowRight, Trash2, FileUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/useUser";
+import { importDocx } from "@/lib/importDocx";
 
 interface Document {
   id: string;
+  user_id?: string;
   title: string;
   genre: string | null;
   word_count: number | null;
@@ -26,6 +28,10 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -49,6 +55,45 @@ export default function DashboardPage() {
     await supabase.auth.signOut();
     router.push("/auth");
     router.refresh();
+  };
+
+  const createDocument = async () => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Untitled", content: "" }),
+      });
+      if (!res.ok) throw new Error("Failed to create document");
+      const doc = (await res.json()) as Document;
+      router.push(`/editor/${doc.id}`);
+    } catch (err) {
+      console.error(err);
+      setCreating(false);
+    }
+  };
+
+  // New book from a Word file. Chapters are split from its headings when the
+  // editor first opens it.
+  const importDocument = async (file: File) => {
+    setImporting(true);
+    setImportError(null);
+    try {
+      const book = await importDocx(file);
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: book.title, content: book.html }),
+      });
+      if (!res.ok) throw new Error("Couldn't create the book. Please try again.");
+      const doc = (await res.json()) as Document;
+      router.push(`/editor/${doc.id}`);
+    } catch (err) {
+      setImportError((err as Error).message);
+      setImporting(false);
+    }
   };
 
   const deleteDocument = async (docId: string, e: React.MouseEvent) => {
@@ -122,14 +167,41 @@ export default function DashboardPage() {
               {loading ? "Loading…" : documents.length === 0 ? "Start your story." : `${documents.length} work${documents.length !== 1 ? "s" : ""}.`}
             </h1>
           </div>
-          <button
-            onClick={() => router.push("/onboarding")}
-            className="btn-gold"
-            style={{ padding: "10px 20px", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer", flexShrink: 0 }}>
-            <Plus style={{ width: "16px", height: "16px" }} />
-            New document
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              disabled={importing}
+              title="Import a Word document (.docx)"
+              style={{ padding: "10px 16px", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-secondary)", cursor: "pointer", fontFamily: "var(--font-inter)" }}>
+              {importing
+                ? <Loader2 style={{ width: "15px", height: "15px" }} className="animate-spin" />
+                : <FileUp style={{ width: "15px", height: "15px" }} />}
+              Import .docx
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void importDocument(file);
+              }}
+            />
+            <button
+              onClick={() => void createDocument()}
+              disabled={creating}
+              className="btn-gold"
+              style={{ padding: "10px 20px", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer" }}>
+              <Plus style={{ width: "16px", height: "16px" }} />
+              New document
+            </button>
+          </div>
         </div>
+        {importError && (
+          <p style={{ margin: "-2rem 0 2rem", fontSize: "13px", fontFamily: "var(--font-inter)", color: "#ef4444" }}>{importError}</p>
+        )}
 
         {/* Gold line */}
         <div style={{ height: "1px", background: "var(--gold-primary)", opacity: 0.2, marginBottom: "3rem" }} />
@@ -151,7 +223,8 @@ export default function DashboardPage() {
               Every great story starts with a blank page.
             </p>
             <button
-              onClick={() => router.push("/onboarding")}
+              onClick={() => void createDocument()}
+              disabled={creating}
               className="btn-gold"
               style={{ padding: "10px 24px", fontSize: "13px", display: "inline-flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer" }}>
               <Plus style={{ width: "14px", height: "14px" }} />
@@ -199,10 +272,15 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Title */}
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 600, fontSize: "14px", color: "var(--text-primary)", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
                         {doc.title || "Untitled"}
                       </span>
+                      {doc.user_id && doc.user_id !== user?.id && (
+                        <span style={{ flexShrink: 0, fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gold-primary)", border: "1px solid var(--gold-border)", padding: "1px 6px" }}>
+                          Shared with you
+                        </span>
+                      )}
                     </div>
 
                     {/* Genre */}
@@ -226,8 +304,8 @@ export default function DashboardPage() {
                     {/* Arrow */}
                     <ArrowRight style={{ width: "14px", height: "14px", color: "var(--gold-primary)", opacity: 0.4 }} />
 
-                    {/* Delete */}
-                    <button
+                    {/* Delete (owner only; collaborators can't delete a shared book) */}
+                    {doc.user_id && doc.user_id !== user?.id ? <span /> : <button
                       onClick={(e) => void deleteDocument(doc.id, e)}
                       disabled={deleting === doc.id}
                       style={{
@@ -248,7 +326,7 @@ export default function DashboardPage() {
                       {deleting === doc.id
                         ? <Loader2 style={{ width: "13px", height: "13px" }} className="animate-spin" />
                         : <Trash2 style={{ width: "13px", height: "13px" }} />}
-                    </button>
+                    </button>}
                   </div>
                 </Link>
 
@@ -268,7 +346,8 @@ export default function DashboardPage() {
 
             {/* New document row */}
             <button
-              onClick={() => router.push("/onboarding")}
+              onClick={() => void createDocument()}
+              disabled={creating}
               style={{ width: "100%", padding: "14px 0", display: "flex", alignItems: "center", gap: "10px", background: "transparent", border: "none", borderBottom: "1px solid var(--border-color)", cursor: "pointer", transition: "background 0.1s" }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>

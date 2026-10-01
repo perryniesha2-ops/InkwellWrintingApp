@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
 import { AnimatePresence, motion } from "framer-motion";
@@ -18,12 +18,28 @@ import {
   BarChart2,
   MessageSquare,
   ImagePlus,
+  Users,
+  PenLine,
+  StickyNote,
+  LayoutList,
+  History,
+  Share2,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
-import type { Template } from "@/lib/templates";
 import { useEditorPrefs } from "@/hooks/useEditorPrefs";
+import { useStoryElements } from "@/hooks/useStoryElements";
+import type { NewElementType } from "@/lib/storyElements";
+import type { OutlineTemplate } from "@/lib/outlineTemplates";
+import GuidanceBanner from "@/components/editor/GuidanceBanner";
+import { importDocx } from "@/lib/importDocx";
+import { collabUser } from "@/lib/collab/identity";
+import { useBookChannel } from "@/hooks/useBookChannel";
+import {
+  buildChapterTree, compileManuscript, countWords, flattenChapterTree, moveChapter, splitHtmlIntoChapters,
+  type Chapter, type DropPosition,
+} from "@/lib/chapters";
 import { BookText } from "lucide-react";
 import { Palette } from "lucide-react";
 import { LayoutTemplate } from "lucide-react";
@@ -33,7 +49,7 @@ const WritingEditor = dynamic(
   () => import("@/components/editor/WritingEditor"),
   { ssr: false },
 );
-const OutlinePanel = dynamic(() => import("@/components/editor/OutlinePanel"), {
+const ChapterSidebar = dynamic(() => import("@/components/editor/ChapterSidebar"), {
   ssr: false,
 });
 const GrammarChecker = dynamic(
@@ -54,10 +70,6 @@ const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
 const ExportMenu = dynamic(() => import("@/components/editor/ExportMenu"), {
   ssr: false,
 });
-const TemplatePicker = dynamic(
-  () => import("@/components/editor/TemplatePicker"),
-  { ssr: false },
-);
 const EditorSettings = dynamic(
   () => import("@/components/editor/EditorSettings"),
   { ssr: false },
@@ -75,6 +87,28 @@ const CoverUpload = dynamic(
   { ssr: false }
 );
 
+const Corkboard = dynamic(() => import("@/components/editor/Corkboard"), {
+  ssr: false,
+});
+const TemplateGallery = dynamic(
+  () => import("@/components/editor/TemplateGallery"),
+  { ssr: false },
+);
+
+const ShareDialog = dynamic(() => import("@/components/editor/ShareDialog"), {
+  ssr: false,
+});
+
+const RevisionPanel = dynamic(
+  () => import("@/components/editor/RevisionPanel"),
+  { ssr: false },
+);
+
+const StoryElementPanel = dynamic(
+  () => import("@/components/editor/StoryElementPanel"),
+  { ssr: false }
+);
+
 const StoryboardPanel = dynamic(
   () => import("@/components/editor/StoryboardPanel"),
   { ssr: false }
@@ -88,6 +122,8 @@ interface Document {
   genre: string | null;
   wordCount: number | null;
    coverImage: string | null;
+  /** Owner, or a collaborator on the whole book / only some chapters. */
+  access?: { role: "owner" | "editor"; scope: "book" | "chapters" };
 }
 
 function ActionButton({
@@ -175,6 +211,8 @@ function ActionButton({
   );
 }
 
+const REVISION_INTERVAL_MS = 10 * 60 * 1000;
+
 interface EditorPageProps {
   id: string;
 }
@@ -187,15 +225,24 @@ export function EditorPage({ id }: EditorPageProps) {
 
   const [doc, setDoc] = useState<Document | null>(null);
   const [title, setTitle] = useState("Untitled");
-  const [content, setContent] = useState("");
   const [genre, setGenre] = useState<string | undefined>();
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [view, setView] = useState<"write" | "corkboard">("write");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Bumped after an auto snapshot so the open history list refreshes.
+  const [revisionTick, setRevisionTick] = useState(0);
+  // Bumped after a restore to remount the editor with the restored content.
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(id !== "new");
-  const [showTemplates, setShowTemplates] = useState(id === "new");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [outlineOpen, setOutlineOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [grammarOpen, setGrammarOpen] = useState(false);
@@ -209,56 +256,98 @@ export function EditorPage({ id }: EditorPageProps) {
   const [illustratorOpen, setIllustratorOpen] = useState(false);
 
   const titleRef = useRef(title);
-  const contentRef = useRef(content);
   const genreRef = useRef(genre);
   const docRef = useRef(doc);
+  const chaptersRef = useRef(chapters);
+  const activeChapterIdRef = useRef(activeChapterId);
+  // Chapters whose content changed since the last save.
+  const dirtyChaptersRef = useRef(new Set<string>());
+  // Bumped on every edit; the autosave effect debounces on it.
+  const [editTick, setEditTick] = useState(0);
 
   const [coverOpen, setCoverOpen] = useState(false);
  const [coverImage, setCoverImage] = useState<string | null>(null);
 
  const coverButtonRef = useRef<HTMLButtonElement>(null);
 const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
-const [totalWordCount, setTotalWordCount] = useState(0);
 const [storyboardOpen, setStoryboardOpen] = useState(false);
 const [chatSelectedText, setChatSelectedText] = useState("");
+  const [elementsOpen, setElementsOpen] = useState(false);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const storyElements = useStoryElements(doc?.id);
+  const me = useMemo(() => (user ? collabUser(user) : null), [user]);
+  const isOwner = doc?.access?.role !== "editor";
+  // Owner or whole-book collaborator: can restructure, rename, edit the Story Bible.
+  const canEditBook = isOwner || doc?.access?.scope === "book";
 
-
-
+  const activeChapter = chapters.find((c) => c.id === activeChapterId) ?? null;
+  // Per-chapter text for the proofreading/analysis panels.
+  const content = activeChapter?.content ?? "";
+  const manuscript = useMemo(() => compileManuscript(chapters), [chapters]);
 
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
-  useEffect(() => {
-    contentRef.current = content;
-  }, [content]);
   useEffect(() => {
     genreRef.current = genre;
   }, [genre]);
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
-  
-
-  // Load document
   useEffect(() => {
-    if (id === "new" || !user) return;
-    fetch(`/api/documents/${id}`)
-      .then((r) => {
-        if (!r.ok) {
-          router.push("/dashboard");
-          return null;
-        }
-        return r.json();
+    chaptersRef.current = chapters;
+  }, [chapters]);
+  useEffect(() => {
+    activeChapterIdRef.current = activeChapterId;
+  }, [activeChapterId]);
+
+  // Load document + chapters. "/editor/new" creates a blank document first.
+  useEffect(() => {
+    if (!user) return;
+    if (id === "new") {
+      fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Untitled", content: "" }),
       })
-      .then((data: Document | null) => {
-        if (!data) return;
-        setDoc(data);
-        setTitle(data.title);
-        setContent(data.content);
-        setGenre(data.genre ?? undefined);
-        setCoverImage(data.coverImage ?? null);
+        .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+        .then((newDoc: Document) => router.replace(`/editor/${newDoc.id}`))
+        .catch(() => router.push("/dashboard"));
+      return;
+    }
+    const getJson = async (url: string) => {
+      const r = await fetch(url);
+      const body = await r.json().catch(() => ({}));
+      return { ok: r.ok, status: r.status, body };
+    };
+    Promise.all([getJson(`/api/documents/${id}`), getJson(`/api/documents/${id}/chapters`)]).then(([docRes, chRes]) => {
+      if (docRes.status === 404 || docRes.status === 401) {
+        router.push("/dashboard");
+        return;
+      }
+      if (!docRes.ok || !chRes.ok) {
+        // Show the problem instead of bouncing back to the dashboard.
+        const detail = (chRes.ok ? docRes : chRes).body?.error;
+        setLoadError(detail ? String(detail) : "This book couldn't be loaded.");
         setLoading(false);
-      });
+        return;
+      }
+      const data = docRes.body as Document;
+      const chapterRows = chRes.body as Chapter[];
+      setDoc(data);
+      setTitle(data.title);
+      setGenre(data.genre ?? undefined);
+      setCoverImage(data.coverImage ?? null);
+      setChapters(chapterRows);
+      // Invite links for a single chapter open that chapter (?chapter=…).
+      const requested = new URLSearchParams(window.location.search).get("chapter");
+      setActiveChapterId(
+        chapterRows.some((c) => c.id === requested)
+          ? requested
+          : flattenChapterTree(buildChapterTree(chapterRows))[0]?.id ?? null,
+      );
+      setLoading(false);
+    });
   }, [id, user, router]);
 
   // Load bible context
@@ -268,7 +357,8 @@ const [chatSelectedText, setChatSelectedText] = useState("");
       .then((r) => r.json())
       .then((data: { context: string }) => setBibleContext(data.context ?? ""))
       .catch(() => {});
-  }, [doc?.id]);
+    // Refetch when the elements panel closes so AI tools see fresh edits.
+  }, [doc?.id, elementsOpen]);
 
 
 useEffect(() => {
@@ -283,68 +373,294 @@ useEffect(() => {
   return () => { editor.off("selectionUpdate", updateSelection); };
 }, [editor]);
 
+  // ⌘\ / Ctrl+\ toggles the chapter sidebar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        setSidebarCollapsed((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
+  // Saves chapter HTML (the database recompiles documents.content from it for
+  // exports and manuscript-level AI), then the book's title/genre. Chapter text
+  // itself is saved keystroke-by-keystroke by live collaboration; this keeps
+  // the HTML copy current.
   const saveDocument = useCallback(async () => {
-    if (!user) return;
+    const d = docRef.current;
+    if (!user || !d) return;
+    const dirty = [...dirtyChaptersRef.current];
+    dirtyChaptersRef.current.clear();
     setSaving(true);
     try {
-      const wordCount = contentRef.current
-  .replace(/<[^>]+>/g, " ")
-  .split(/\s+/)
-  .filter(Boolean).length;
-setTotalWordCount(wordCount);
-
-      if (docRef.current) {
-        await fetch(`/api/documents/${docRef.current.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: titleRef.current,
-            content: contentRef.current,
-            genre: genreRef.current ?? null,
-            wordCount,
-          }),
-        });
+      const all = chaptersRef.current;
+      const results = await Promise.all(
+        dirty.map((cid) => {
+          const c = all.find((x) => x.id === cid);
+          return c
+            ? fetch(`/api/documents/${d.id}/chapters/${cid}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: c.content }),
+              }).then((r) => r.ok)
+            : true;
+        }),
+      );
+      const mayEditBook = d.access?.role !== "editor" || d.access?.scope === "book";
+      const docOk = !mayEditBook || await fetch(`/api/documents/${d.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleRef.current, genre: genreRef.current ?? null }),
+      }).then((r) => r.ok);
+      if (results.every(Boolean) && docOk) {
+        setLastSaved(new Date());
       } else {
-        const res = await fetch("/api/documents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: titleRef.current,
-            content: contentRef.current,
-            genre: genreRef.current ?? null,
-            wordCount,
-          }),
-        });
-        const newDoc = (await res.json()) as Document;
-        setDoc(newDoc);
-        router.replace(`/editor/${newDoc.id}`);
+        dirty.forEach((cid) => dirtyChaptersRef.current.add(cid));
       }
-      setLastSaved(new Date());
+    } catch {
+      dirty.forEach((cid) => dirtyChaptersRef.current.add(cid));
     } finally {
       setSaving(false);
     }
-  }, [user, router]);
+  }, [user]);
 
- 
-
-  // Auto-save
+  // Auto snapshot for revision history: every 10 minutes, only if edited.
+  const lastSnapshotAtRef = useRef(0);
+  const editedSinceSnapshotRef = useRef(false);
   useEffect(() => {
-    if (!content) return;
-    const timer = setTimeout(() => {
-      void saveDocument();
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [content, title, saveDocument]);
+    if (editTick) editedSinceSnapshotRef.current = true;
+  }, [editTick]);
+  useEffect(() => {
+    // Revision history is the owner's (collaborators can't read or restore it).
+    if (!doc?.id || doc.access?.role === "editor") return;
+    const docId = doc.id;
+    lastSnapshotAtRef.current = Date.now();
+    const timer = setInterval(async () => {
+      if (!editedSinceSnapshotRef.current) return;
+      if (Date.now() - lastSnapshotAtRef.current < REVISION_INTERVAL_MS) return;
+      lastSnapshotAtRef.current = Date.now();
+      editedSinceSnapshotRef.current = false;
+      await saveDocument();
+      const res = await fetch(`/api/documents/${docId}/revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "auto" }),
+      }).catch(() => null);
+      if (res?.ok) setRevisionTick((t) => t + 1);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [doc?.id, doc?.access?.role, saveDocument]);
 
-  const handleTemplateSelect = (template: Template) => {
-    setGenre(template.genre === "Freewrite" ? undefined : template.genre);
-    setContent(template.starterContent ?? "");
-    setTitle("Untitled");
-    setShowTemplates(false);
+  const reloadAfterRestore = async () => {
+    if (!doc) return;
+    const [data, rows] = await Promise.all([
+      fetch(`/api/documents/${doc.id}`).then((r) => (r.ok ? r.json() : null)) as Promise<Document | null>,
+      fetch(`/api/documents/${doc.id}/chapters`).then((r) => (r.ok ? r.json() : null)) as Promise<Chapter[] | null>,
+    ]);
+    if (!data || !rows) return;
+    dirtyChaptersRef.current.clear();
+    setTitle(data.title);
+    setChapters(rows);
+    setActiveChapterId((current) =>
+      rows.some((c) => c.id === current) ? current : flattenChapterTree(buildChapterTree(rows))[0]?.id ?? null,
+    );
+    setEditorEpoch((n) => n + 1);
   };
 
-  
+  // A collaborator added/renamed/moved/deleted chapters: refresh the list. The
+  // open chapter's text is owned by the live editor, so keep our copy of it.
+  const refreshChapters = async () => {
+    if (!doc) return;
+    const res = await fetch(`/api/documents/${doc.id}/chapters`);
+    if (!res.ok) return;
+    const rows = (await res.json()) as Chapter[];
+    setChapters((prev) => {
+      const local = new Map(prev.map((c) => [c.id, c]));
+      return rows.map((r) =>
+        r.id === activeChapterIdRef.current || dirtyChaptersRef.current.has(r.id)
+          ? { ...r, content: local.get(r.id)?.content ?? r.content }
+          : r,
+      );
+    });
+    setActiveChapterId((current) =>
+      rows.some((c) => c.id === current) ? current : flattenChapterTree(buildChapterTree(rows))[0]?.id ?? null,
+    );
+  };
+
+  const { peers, notify } = useBookChannel(doc?.id, me, activeChapterId, {
+    onTreeChanged: () => void refreshChapters(),
+    onReload: () => void reloadAfterRestore(),
+  });
+  const notifyTree = () => notify("tree-changed");
+
+  // Auto-save shortly after typing pauses.
+  useEffect(() => {
+    if (!editTick) return;
+    const timer = setTimeout(() => {
+      void saveDocument();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [editTick, saveDocument]);
+
+  const markEdited = () => setEditTick((t) => t + 1);
+
+  const handleContentChange = useCallback((html: string, remote: boolean) => {
+    const cid = activeChapterIdRef.current;
+    if (!cid) return;
+    setChapters((prev) => prev.map((c) => (c.id === cid ? { ...c, content: html } : c)));
+    // The collaborator who made a remote change saves it; only save our own.
+    if (remote) return;
+    dirtyChaptersRef.current.add(cid);
+    setEditTick((t) => t + 1);
+  }, []);
+
+  const selectChapter = (chapterId: string) => {
+    if (chapterId === activeChapterId) return;
+    if (dirtyChaptersRef.current.size > 0) void saveDocument();
+    setActiveChapterId(chapterId);
+  };
+
+  const addChapter = async (parentId: string | null) => {
+    if (!doc) return;
+    const siblings = chapters.filter((c) => c.parent_id === parentId);
+    const res = await fetch(`/api/documents/${doc.id}/chapters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parentId,
+        title: parentId ? `Scene ${siblings.length + 1}` : `Chapter ${siblings.length + 1}`,
+        orderIndex: siblings.length,
+      }),
+    });
+    if (!res.ok) return;
+    const chapter = (await res.json()) as Chapter;
+    setChapters((prev) => [...prev, chapter]);
+    selectChapter(chapter.id);
+    markEdited();
+    notifyTree();
+  };
+
+  const renameChapter = (chapterId: string, newTitle: string) => {
+    if (!doc) return;
+    setChapters((prev) => prev.map((c) => (c.id === chapterId ? { ...c, title: newTitle } : c)));
+    void fetch(`/api/documents/${doc.id}/chapters/${chapterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle }),
+    }).then(notifyTree);
+    markEdited();
+  };
+
+  const deleteChapter = async (chapterId: string) => {
+    if (!doc) return;
+    const removed = new Set(
+      chapters.filter((c) => c.id === chapterId || c.parent_id === chapterId).map((c) => c.id),
+    );
+    if (removed.size === chapters.length) {
+      alert("A book needs at least one chapter.");
+      return;
+    }
+    const target = chapters.find((c) => c.id === chapterId);
+    const extra = removed.size > 1 ? ` and its ${removed.size - 1} subchapter(s)` : "";
+    if (!confirm(`Delete "${target?.title}"${extra}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/documents/${doc.id}/chapters/${chapterId}`, { method: "DELETE" });
+    if (!res.ok) return;
+    removed.forEach((cid) => dirtyChaptersRef.current.delete(cid));
+    const remaining = chapters.filter((c) => !removed.has(c.id));
+    setChapters(remaining);
+    if (activeChapterId && removed.has(activeChapterId)) {
+      setActiveChapterId(flattenChapterTree(buildChapterTree(remaining))[0]?.id ?? null);
+    }
+    markEdited();
+    notifyTree();
+  };
+
+  const patchChapter = (chapterId: string, patch: Partial<Pick<Chapter, "synopsis" | "guidance">>) => {
+    if (!doc) return;
+    setChapters((prev) => prev.map((c) => (c.id === chapterId ? { ...c, ...patch } : c)));
+    void fetch(`/api/documents/${doc.id}/chapters/${chapterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(notifyTree);
+  };
+
+  // A fresh book: one chapter, nothing written. Templates replace it.
+  const bookIsEmpty =
+    chapters.length === 1 && countWords(chapters[0].content) === 0;
+
+  type NewChapterTree = { title: string; content?: string; guidance?: string; children?: { title: string; content?: string; guidance?: string }[] }[];
+
+  // Appends chapters after the existing ones (replacing a fresh book's blank
+  // first chapter) and selects the first new one if the blank was showing.
+  const appendChapters = async (newChapters: NewChapterTree): Promise<boolean> => {
+    if (!doc) return false;
+    const res = await fetch(`/api/documents/${doc.id}/chapters/bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapters: newChapters,
+        replaceChapterId: bookIsEmpty ? chapters[0].id : undefined,
+      }),
+    });
+    if (!res.ok) return false;
+    const { created, removedId } = (await res.json()) as { created: Chapter[]; removedId: string | null };
+    if (removedId) dirtyChaptersRef.current.delete(removedId);
+    setChapters((prev) => [...prev.filter((c) => c.id !== removedId), ...created]);
+    const first = flattenChapterTree(buildChapterTree(created))[0];
+    if (first && (removedId === activeChapterId || !activeChapterId)) setActiveChapterId(first.id);
+    markEdited();
+    notifyTree();
+    return true;
+  };
+
+  const applyTemplate = async (template: OutlineTemplate): Promise<boolean> => {
+    const ok = await appendChapters(template.beats);
+    if (ok) setView("corkboard");
+    return ok;
+  };
+
+  const importIntoBook = async (file: File) => {
+    try {
+      const book = await importDocx(file);
+      const seeds = splitHtmlIntoChapters(book.html);
+      const tree: NewChapterTree = seeds
+        .map((seed, i) => ({ seed, i }))
+        .filter(({ seed }) => seed.parentIndex === null)
+        .map(({ seed, i }) => ({
+          title: seed.title,
+          content: seed.content,
+          children: seeds.filter((c) => c.parentIndex === i).map((c) => ({ title: c.title, content: c.content })),
+        }));
+      if (bookIsEmpty && title === "Untitled") {
+        setTitle(book.title);
+      }
+      const ok = await appendChapters(tree);
+      if (!ok) throw new Error("Couldn't add the imported chapters. Please try again.");
+      const count = tree.length;
+      const notes = book.warnings.length ? `\n\n${book.warnings.join("\n")}` : "";
+      alert(`Imported ${count} chapter${count === 1 ? "" : "s"} from ${file.name}.${notes}`);
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
+
+  const handleMoveChapter = (dragId: string, targetId: string, position: DropPosition) => {
+    if (!doc) return;
+    const result = moveChapter(chapters, dragId, targetId, position);
+    if (!result || result.placements.length === 0) return;
+    setChapters(result.chapters);
+    void fetch(`/api/documents/${doc.id}/chapters/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placements: result.placements }),
+    }).then(notifyTree);
+    markEdited();
+  };
+
   const openRightPanel = (
     panel:
       | "chat"
@@ -353,7 +669,9 @@ setTotalWordCount(wordCount);
       | "readability"
       | "thesaurus"
       | "illustrator"
-      | "storyboard",
+      | "storyboard"
+      | "elements"
+      | "history",
   ) => {
     setChatOpen(panel === "chat" ? (o) => !o : false);
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
@@ -362,6 +680,20 @@ setTotalWordCount(wordCount);
     setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
     setIllustratorOpen(panel === "illustrator" ? (o) => !o : false);
     setStoryboardOpen(panel === "storyboard" ? (o) => !o : false);
+    setElementsOpen(panel === "elements" ? (o) => !o : false);
+    setRevisionsOpen(panel === "history" ? (o) => !o : false);
+  };
+
+  // Show one story element's details in the right sidebar.
+  const openElement = (elementId: string | null) => {
+    openRightPanel("elements");
+    setElementsOpen(true);
+    setSelectedElementId(elementId);
+  };
+
+  const createElement = async (type: NewElementType) => {
+    const el = await storyElements.create(type);
+    if (el) openElement(el.id);
   };
   
 
@@ -372,8 +704,22 @@ setTotalWordCount(wordCount);
       grammarOpen ||
       thesaurusOpen ||
       illustratorOpen ||
-      storyboardOpen) &&
+      storyboardOpen ||
+      elementsOpen ||
+      revisionsOpen) &&
     !focusMode;
+
+  if (loadError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-primary)", padding: "24px" }}>
+        <div style={{ maxWidth: "460px", textAlign: "center", fontFamily: "var(--font-inter)" }}>
+          <h1 style={{ fontFamily: "var(--font-dm-sans)", fontSize: "20px", color: "var(--text-primary)", margin: "0 0 8px" }}>This book couldn&apos;t be opened</h1>
+          <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: "0 0 6px" }}>{loadError}</p>
+          <Link href="/dashboard" style={{ fontSize: "13px", color: "var(--gold-primary)" }}>Back to your manuscripts</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -463,7 +809,11 @@ setTotalWordCount(wordCount);
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              readOnly={!canEditBook}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                markEdited();
+              }}
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -587,6 +937,7 @@ setTotalWordCount(wordCount);
               </Link>
             )}
 
+{canEditBook && (
 <div style={{ position: "relative" }} data-cover-popover>
  <button
   onClick={() => {
@@ -639,6 +990,7 @@ setTotalWordCount(wordCount);
   <span>Cover</span>
 </button>
 </div>
+)}
 
 {/* Portal dropdown — renders on document.body */}
 {coverOpen && doc && typeof window !== "undefined" && createPortal(
@@ -671,10 +1023,73 @@ setTotalWordCount(wordCount);
   document.body
 )}
 
+            {doc && (
+              <div style={{ display: "flex", border: "1px solid var(--border-color)", flexShrink: 0 }}>
+                {([["write", PenLine, "Write"], ["corkboard", StickyNote, "Corkboard"]] as const).map(([v, Icon, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "5px", padding: "4px 10px",
+                      fontSize: "12px", fontFamily: "var(--font-inter)", border: "none", cursor: "pointer",
+                      background: view === v ? "var(--gold-subtle)" : "transparent",
+                      color: view === v ? "var(--gold-primary)" : "var(--text-muted)",
+                    }}>
+                    <Icon style={{ width: "12px", height: "12px" }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {doc && canEditBook && (
+              <button
+                onClick={() => setTemplatesOpen(true)}
+                title="Outline templates"
+                style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 0 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
+                <LayoutList style={{ width: "13px", height: "13px" }} />
+                <span>Templates</span>
+              </button>
+            )}
+
+            {peers.length > 0 && (
+              <div style={{ display: "flex", flexShrink: 0 }} aria-label="Also here">
+                {peers.slice(0, 4).map((p, i) => (
+                  <span
+                    key={p.id}
+                    title={`${p.name}${p.chapterId ? ` · ${chapters.find((c) => c.id === p.chapterId)?.title ?? ""}` : ""}`}
+                    style={{
+                      width: "24px", height: "24px", borderRadius: "50%", background: p.color, color: "#fff",
+                      display: "flex", alignItems: "center", justifyContent: "center", marginLeft: i ? "-6px" : 0,
+                      fontSize: "11px", fontWeight: 700, fontFamily: "var(--font-inter)",
+                      border: "2px solid var(--bg-surface)", cursor: "default",
+                    }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </span>
+                ))}
+                {peers.length > 4 && (
+                  <span style={{ marginLeft: "4px", fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", alignSelf: "center" }}>+{peers.length - 4}</span>
+                )}
+              </div>
+            )}
+
+            {doc && isOwner && (
+              <button
+                onClick={() => setShareOpen(true)}
+                style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: 0 }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
+                <Share2 style={{ width: "13px", height: "13px" }} />
+                <span>Share</span>
+              </button>
+            )}
+
             {ExportMenu && (
               <ExportMenu
                 title={title}
-                content={content}
+                content={manuscript}
                 genre={genre}
                 documentId={doc?.id}
               />
@@ -718,14 +1133,26 @@ setTotalWordCount(wordCount);
   overflow: "hidden",    // ← add this back
   position: "relative",
 }}>
-        {!focusMode && OutlinePanel && (
-  <OutlinePanel
-    editor={editor}
-    isOpen={outlineOpen}
-    onToggle={() => setOutlineOpen((o) => !o)}
-    documentId={doc?.id}  // ← add this
-  />
-)}
+        {!focusMode && doc && (
+          <ChapterSidebar
+            documentId={doc.id}
+            chapters={chapters}
+            activeChapterId={activeChapterId}
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+            onSelect={selectChapter}
+            onAdd={(parentId) => void addChapter(parentId)}
+            onRename={renameChapter}
+            onDelete={(chapterId) => void deleteChapter(chapterId)}
+            onMove={handleMoveChapter}
+            elements={storyElements.elements}
+            onOpenElement={openElement}
+            onCreateElement={(type) => void createElement(type)}
+            onImport={importIntoBook}
+            canEditStructure={canEditBook}
+            peers={peers}
+          />
+        )}
 
         <motion.div
           style={{
@@ -738,15 +1165,45 @@ setTotalWordCount(wordCount);
           animate={{ marginRight: anyRightPanelOpen ? "320px" : "0" }}
           transition={{ type: "spring", damping: 28, stiffness: 280 }}
         >
-          {!showTemplates && WritingEditor && (
+          {view === "corkboard" && !focusMode && (
+            <Corkboard
+              chapters={chapters}
+              activeChapterId={activeChapterId}
+              onOpen={(chapterId) => {
+                selectChapter(chapterId);
+                setView("write");
+              }}
+              onRename={renameChapter}
+              onSynopsisChange={(chapterId, synopsis) => patchChapter(chapterId, { synopsis })}
+              onMove={handleMoveChapter}
+              onAdd={(parentId) => void addChapter(parentId)}
+              onOpenTemplates={() => setTemplatesOpen(true)}
+              canEditStructure={canEditBook}
+            />
+          )}
+          {view === "write" && !focusMode && activeChapter?.guidance && (
+            <GuidanceBanner
+              key={activeChapter.id}
+              title={activeChapter.title}
+              guidance={activeChapter.guidance}
+              onDismiss={() => patchChapter(activeChapter.id, { guidance: "" })}
+            />
+          )}
+          {(view === "write" || focusMode) && activeChapter && me && (
             <WritingEditor
-              content={content}
-              onChange={setContent}
+              key={`${activeChapter.id}-${editorEpoch}`}
+              collab={{ chapterId: activeChapter.id, user: me }}
+              content={activeChapter.content}
+              onChange={handleContentChange}
               editorStyle={editorStyle}
               onEditorReady={setEditor}
               genre={genre}
               bibleContext={bibleContext}
               focusMode={focusMode}
+              storyElements={storyElements.elements}
+              onOpenElement={openElement}
+              smartText={prefs.smartText}
+              onToggleSmartText={() => updatePrefs({ smartText: !prefs.smartText })}
             />
           )}
         </motion.div>
@@ -825,6 +1282,20 @@ setTotalWordCount(wordCount);
                 }}
               />
               <ActionButton
+                icon={Users}
+                label="Story Elements"
+                active={elementsOpen}
+                onClick={() => openRightPanel("elements")}
+              />
+              {isOwner && (
+                <ActionButton
+                  icon={History}
+                  label="Revision History"
+                  active={revisionsOpen}
+                  onClick={() => openRightPanel("history")}
+                />
+              )}
+              <ActionButton
                 icon={MessageSquare}
                 label="AI Assistant"
                 active={chatOpen}
@@ -877,6 +1348,30 @@ setTotalWordCount(wordCount);
           />
         )}
        
+{doc && (
+  <RevisionPanel
+    documentId={doc.id}
+    isOpen={revisionsOpen}
+    onClose={() => setRevisionsOpen(false)}
+    refreshKey={revisionTick}
+    flushSave={saveDocument}
+    onRestored={async () => {
+      await reloadAfterRestore();
+      notify("reload");
+    }}
+  />
+)}
+{doc && (
+  <StoryElementPanel
+    readOnly={!canEditBook}
+    api={storyElements}
+    documentId={doc.id}
+    selectedId={selectedElementId}
+    onSelect={setSelectedElementId}
+    isOpen={elementsOpen}
+    onClose={() => setElementsOpen(false)}
+  />
+)}
 {doc && StoryboardPanel && (
   <StoryboardPanel
     documentId={doc.id}
@@ -886,11 +1381,15 @@ setTotalWordCount(wordCount);
 )}
       </div>
 
-      {/* Template picker */}
-      {showTemplates && TemplatePicker && (
-        <TemplatePicker
-          onSelect={handleTemplateSelect}
-          onClose={doc ? () => setShowTemplates(false) : undefined}
+      {shareOpen && doc && (
+        <ShareDialog documentId={doc.id} chapters={chapters} onClose={() => setShareOpen(false)} />
+      )}
+
+      {templatesOpen && (
+        <TemplateGallery
+          onClose={() => setTemplatesOpen(false)}
+          onApply={applyTemplate}
+          bookIsEmpty={bookIsEmpty}
         />
       )}
 

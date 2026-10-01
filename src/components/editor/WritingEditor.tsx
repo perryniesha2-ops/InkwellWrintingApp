@@ -1,4 +1,6 @@
 import { useEditor, EditorContent } from "@tiptap/react";
+import Collaboration, { isChangeOrigin } from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
@@ -17,11 +19,14 @@ import {
   Undo,
   Redo,
   Minus,
+  Sparkles,
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -30,16 +35,32 @@ import InlineAIToolbar from "@/components/editor/InlineAIToolbar";
 import { fixHtmlParagraphs, plainTextToHtml } from "@/lib/formatParagraphs";
 import TextAlign from "@tiptap/extension-text-align";
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { SmartText, SMART_TEXT_REFRESH, type SmartSuggestionState } from "@/components/editor/smartTextExtension";
+import SmartTextLayer from "@/components/editor/SmartTextLayer";
+import { buildTerms } from "@/lib/smartText";
+import type { StoryElement } from "@/lib/storyElements";
+import { useChapterCollab } from "@/hooks/useChapterCollab";
+import type { CollabUser } from "@/lib/collab/identity";
 
 interface EditorProps {
   content: string;
-  onChange: (content: string) => void;
+  /** `remote` is true when the change came from a collaborator. */
+  onChange: (content: string, remote: boolean) => void;
+  /**
+   * Live collaboration for this chapter. `content` is then only used to seed
+   * the shared document the first time the chapter is opened.
+   */
+  collab?: { chapterId: string; user: CollabUser };
   placeholder?: string;
   editorStyle?: CSSProperties;
   onEditorReady?: (editor: Editor) => void;
   genre?: string;
   bibleContext?: string;
   focusMode?: boolean;
+  storyElements?: StoryElement[];
+  onOpenElement?: (id: string) => void;
+  smartText?: boolean;
+  onToggleSmartText?: () => void;
 }
 
 function ToolbarButton({
@@ -99,12 +120,30 @@ export default function WritingEditor({
   genre,
   bibleContext,
   focusMode,
+  storyElements = [],
+  onOpenElement,
+  smartText = true,
+  onToggleSmartText,
+  collab,
 }: EditorProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const { session, status, error: collabError } = useChapterCollab(collab?.chapterId ?? null);
+  const [suggestion, setSuggestion] = useState<SmartSuggestionState | null>(null);
+  // The editor is created once per chapter; Smart Text reads these refs live.
+  const terms = useMemo(() => buildTerms(storyElements), [storyElements]);
+  const termsRef = useRef(terms);
+  const smartTextRef = useRef(smartText);
 
   const editor = useEditor({
   extensions: [
-    StarterKit,
+    // Collaboration brings its own (shared-history-aware) undo/redo.
+    StarterKit.configure(collab ? { undoRedo: false } : {}),
+    ...(session
+      ? [
+          Collaboration.configure({ document: session.doc }),
+          CollaborationCaret.configure({ provider: session.provider, user: collab!.user }),
+        ]
+      : []),
     Typography,
     Underline,
     CharacterCount,
@@ -116,10 +155,18 @@ export default function WritingEditor({
     Placeholder.configure({
       placeholder: placeholder ?? "Begin your story here…",
     }),
+    // The getters run inside ProseMirror plugin callbacks, never during render.
+    // eslint-disable-next-line react-hooks/refs
+    SmartText.configure({
+      getTerms: () => termsRef.current,
+      isEnabled: () => smartTextRef.current,
+      onSuggestionChange: setSuggestion,
+    }),
   ],
-    content,
-    onUpdate({ editor }) {
-      onChange(editor.getHTML());
+    // With collaboration the content comes from the shared doc (seeded below).
+    content: collab ? undefined : content,
+    onUpdate({ editor, transaction }) {
+      onChange(editor.getHTML(), isChangeOrigin(transaction));
     },
     editorProps: {
       attributes: {
@@ -127,7 +174,37 @@ export default function WritingEditor({
         spellcheck: "false",
       },
     },
-  });
+    // In collaborative mode, wait for the shared doc before creating the editor.
+  }, [session]);
+
+  // First open of a chapter with live editing: fill the shared doc from the
+  // chapter's saved HTML. Only the browser that wins the claim seeds it, so two
+  // people opening a chapter at once can't duplicate its text.
+  useEffect(() => {
+    if (!editor || !session || !collab) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const isEmpty = () => session.doc.getXmlFragment("default").length === 0;
+    const seed = () => {
+      if (!cancelled && !editor.isDestroyed && isEmpty()) editor.commands.setContent(content);
+    };
+    void session.provider.synced.then(async ({ seeded }) => {
+      if (cancelled || !isEmpty() || !content.replace(/<[^>]+>/g, "").trim()) return;
+      if (!seeded) {
+        if (await session.provider.claimSeed()) seed();
+      } else {
+        // Someone claimed it but their text hasn't arrived; don't leave the
+        // chapter blank if they never finished.
+        timer = setTimeout(seed, 4000);
+      }
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // Seed once per editor; `content` is the snapshot taken when it opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, session]);
 
  const handleFixParagraphs = useCallback(() => {
   if (!editor) return;
@@ -150,7 +227,6 @@ export default function WritingEditor({
     const currentHtml = editor.getHTML();
     const fixed = fixHtmlParagraphs(currentHtml);
    editor.commands.setContent(fixed);
-onChange(editor.getHTML());
   }
 }, [editor, onChange]);
 
@@ -160,6 +236,15 @@ onChange(editor.getHTML());
       onEditorReady?.(editor);
     }
   }, [editor, onEditorReady]);
+
+  // Re-scan for element names when elements are renamed/added or Smart Text is toggled.
+  useEffect(() => {
+    termsRef.current = terms;
+    smartTextRef.current = smartText;
+    if (editor && !editor.isDestroyed) {
+      editor.view.dispatch(editor.state.tr.setMeta(SMART_TEXT_REFRESH, true));
+    }
+  }, [editor, terms, smartText]);
 
   const handleReplace = useCallback(
     (newText: string) => {
@@ -184,6 +269,13 @@ onChange(editor.getHTML());
     [editor],
   );
 
+  if (collab && (!session || !editor)) {
+    return (
+      <div className="flex flex-1 items-center justify-center" style={{ color: collabError ? "#ef4444" : "var(--text-dim)", fontFamily: "var(--font-inter)", fontSize: "13px", padding: "2rem", textAlign: "center" }}>
+        {collabError ?? "Loading chapter…"}
+      </div>
+    );
+  }
   if (!editor) return null;
 
   const wordCount = editor.storage.characterCount?.words() ?? 0;
@@ -342,6 +434,28 @@ onChange(editor.getHTML());
 </div>
             
 
+            {onToggleSmartText && (
+              <ToolbarButton
+                onClick={onToggleSmartText}
+                active={smartText}
+                title={smartText ? "Smart Text on: story elements are suggested and linked as you type" : "Smart Text off"}>
+                <Sparkles className="w-3.5 h-3.5" />
+              </ToolbarButton>
+            )}
+
+            {collab && (
+              <span
+                title={status === "online"
+                  ? "Live: changes save as you type and collaborators see them instantly"
+                  : status === "offline"
+                    ? "Offline: keep writing; changes are kept and saved when the connection returns"
+                    : "Connecting…"}
+                style={{ display: "flex", alignItems: "center", gap: "5px", marginLeft: "8px", fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: status === "online" ? "#5bb98c" : status === "offline" ? "#e07b4f" : "var(--text-dim)" }} />
+                {status === "online" ? "Live" : status === "offline" ? "Offline" : "Connecting"}
+              </span>
+            )}
+
             {/* Word count */}
             <div
               className="ml-auto flex items-center gap-3"
@@ -400,6 +514,12 @@ onChange(editor.getHTML());
         onInsertAfter={handleInsertAfter}
         genre={genre}
         bibleContext={bibleContext}
+      />
+      <SmartTextLayer
+        suggestion={smartText ? suggestion : null}
+        elements={storyElements}
+        containerRef={editorContainerRef}
+        onOpenElement={onOpenElement}
       />
     </motion.div>
   );
