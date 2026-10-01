@@ -17,7 +17,18 @@ export async function GET(req: Request, { params }: RouteParams) {
     .single();
 
   if (error || !doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(doc);
+
+  // Owner, or a collaborator on the whole book / specific chapters.
+  let access: { role: "owner" | "editor"; scope: "book" | "chapters" } = { role: "owner", scope: "book" };
+  if (doc.user_id !== user.id) {
+    const { data: memberships } = await supabase
+      .from("document_members")
+      .select("chapter_id")
+      .eq("document_id", id)
+      .eq("user_id", user.id);
+    access = { role: "editor", scope: memberships?.some((m) => m.chapter_id === null) ? "book" : "chapters" };
+  }
+  return NextResponse.json({ ...doc, access });
 }
 
 export async function PATCH(req: Request, { params }: RouteParams) {

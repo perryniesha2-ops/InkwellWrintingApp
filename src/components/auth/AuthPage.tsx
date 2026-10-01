@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Feather, Loader2, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { safeNext } from "@/lib/safeNext";
+
+// Where to go after signing in, e.g. back to a share invite (?next=/share/…).
+const nextPath = () =>
+  safeNext(typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("next"));
 
 const QUOTES = [
   { text: "There is no greater agony than bearing an untold story inside you.", author: "Maya Angelou" },
@@ -46,7 +51,7 @@ if (mode === "signup") {
     password,
   });
   if (signInError) throw signInError;
-  router.push("/dashboard");
+  router.push(nextPath());
   router.refresh();
 } else {
   const { error } = await supabase.auth.signInWithPassword({
@@ -54,7 +59,7 @@ if (mode === "signup") {
     password,
   });
   if (error) throw error;
-  router.push("/dashboard");
+  router.push(nextPath());
   router.refresh();
 }
     } catch (err) {
@@ -69,7 +74,7 @@ if (mode === "signup") {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath())}`,
       },
     });
     if (error) {
@@ -308,7 +313,7 @@ if (mode === "signup") {
                 if (!email) { setError("Enter your email first."); return; }
                 setLoading(true);
                 const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                  redirectTo: `${window.location.origin}/auth/callback`,
+                  redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath())}`,
                 });
                 setLoading(false);
                 if (error) setError(error.message);

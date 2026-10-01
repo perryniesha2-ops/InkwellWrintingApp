@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeNext } from "@/lib/safeNext";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -32,8 +33,7 @@ export async function middleware(request: NextRequest) {
   const isProtectedRoute =
     request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/editor") ||
-    request.nextUrl.pathname.startsWith("/bible") ||
-    request.nextUrl.pathname.startsWith("/new");
+    request.nextUrl.pathname.startsWith("/bible");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();
@@ -43,8 +43,7 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from auth page
   if (user && request.nextUrl.pathname === "/auth") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    const url = new URL(safeNext(request.nextUrl.searchParams.get("next")), request.url);
     return NextResponse.redirect(url);
   }
 
