@@ -7,6 +7,8 @@ export type FontSize = "sm" | "md" | "lg" | "xl";
 export interface EditorPrefs {
   fontFamily: FontFamily;
   fontSize: FontSize;
+  /** Story element autocomplete + links while typing. */
+  smartText: boolean;
 }
 
 export const FONT_OPTIONS = [
@@ -56,14 +58,16 @@ export const SIZE_OPTIONS = [
 
 const STORAGE_KEY = "prosr-editor-prefs";
 
+const DEFAULT_PREFS: EditorPrefs = { fontFamily: "cormorant", fontSize: "md", smartText: true };
+
 function loadPrefs(): EditorPrefs {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored) as EditorPrefs;
+    if (stored) return { ...DEFAULT_PREFS, ...(JSON.parse(stored) as Partial<EditorPrefs>) };
   } catch {
     /* ignore */
   }
-  return { fontFamily: "cormorant", fontSize: "md" };
+  return DEFAULT_PREFS;
 }
 
 export function useEditorPrefs() {

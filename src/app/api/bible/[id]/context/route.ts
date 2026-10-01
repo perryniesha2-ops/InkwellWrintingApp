@@ -10,6 +10,7 @@ interface Character {
   hair: string | null;
   eyes: string | null;
   height_build: string | null;
+  description: string | null;
 }
 
 interface OutlineSection {
@@ -45,7 +46,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     { data: outline },
     { data: world },
   ] = await Promise.all([
-    supabase.from("characters").select("name, role, traits, hair, eyes, height_build").eq("bible_id", bible.id),
+    supabase.from("characters").select("name, role, traits, hair, eyes, height_build, description").eq("bible_id", bible.id),
     supabase.from("outline_sections").select("title, type, content, order_index").eq("bible_id", bible.id).order("order_index"),
     supabase.from("world_entries").select("title, category, content").eq("bible_id", bible.id),
   ]);
@@ -59,6 +60,7 @@ export async function GET(req: Request, { params }: RouteParams) {
       if (c.traits?.length) parts.push(`Traits: ${c.traits.join(", ")}`);
       if (c.hair) parts.push(`Hair: ${c.hair}`);
       if (c.eyes) parts.push(`Eyes: ${c.eyes}`);
+      if (c.description) parts.push(c.description.slice(0, 200));
       return parts.join(" | ");
     }).join("\n");
     sections.push(`CHARACTERS:\n${charText}`);
