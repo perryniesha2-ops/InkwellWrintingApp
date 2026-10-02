@@ -275,7 +275,12 @@ const [chatSelectedText, setChatSelectedText] = useState("");
   const [elementsOpen, setElementsOpen] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const storyElements = useStoryElements(doc?.id);
-  const me = useMemo(() => (user ? collabUser(user) : null), [user]);
+  // Supabase hands out a new `user` object on every auth event (tab refocus,
+  // hourly token refresh), so anything that should run once per sign-in keys
+  // on the id. Keying on the object reloaded the book and jumped to chapter 1.
+  const userId = user?.id ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const me = useMemo(() => (user ? collabUser(user) : null), [userId]);
   const isOwner = doc?.access?.role !== "editor";
   // Owner or whole-book collaborator: can restructure, rename, edit the Story Bible.
   const canEditBook = isOwner || doc?.access?.scope === "book";
@@ -303,7 +308,7 @@ const [chatSelectedText, setChatSelectedText] = useState("");
 
   // Load document + chapters. "/editor/new" creates a blank document first.
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     if (id === "new") {
       fetch("/api/documents", {
         method: "POST",
@@ -341,14 +346,18 @@ const [chatSelectedText, setChatSelectedText] = useState("");
       setChapters(chapterRows);
       // Invite links for a single chapter open that chapter (?chapter=…).
       const requested = new URLSearchParams(window.location.search).get("chapter");
-      setActiveChapterId(
-        chapterRows.some((c) => c.id === requested)
-          ? requested
-          : flattenChapterTree(buildChapterTree(chapterRows))[0]?.id ?? null,
+      // Keep the open chapter if this is a reload; otherwise start at the
+      // requested chapter or the first one.
+      setActiveChapterId((current) =>
+        current && chapterRows.some((c) => c.id === current)
+          ? current
+          : chapterRows.some((c) => c.id === requested)
+            ? requested
+            : flattenChapterTree(buildChapterTree(chapterRows))[0]?.id ?? null,
       );
       setLoading(false);
     });
-  }, [id, user, router]);
+  }, [id, userId, router]);
 
   // Load bible context
   useEffect(() => {
@@ -391,7 +400,7 @@ useEffect(() => {
   // the HTML copy current.
   const saveDocument = useCallback(async () => {
     const d = docRef.current;
-    if (!user || !d) return;
+    if (!userId || !d) return;
     const dirty = [...dirtyChaptersRef.current];
     dirtyChaptersRef.current.clear();
     setSaving(true);
@@ -425,7 +434,7 @@ useEffect(() => {
     } finally {
       setSaving(false);
     }
-  }, [user]);
+  }, [userId]);
 
   // Auto snapshot for revision history: every 10 minutes, only if edited.
   const lastSnapshotAtRef = useRef(0);

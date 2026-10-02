@@ -16,9 +16,16 @@ export function useUser() {
       setLoading(false);
     });
 
+    // Supabase re-emits auth events on tab refocus and token refresh with a
+    // fresh (but identical) user object. Keep the existing object unless the
+    // user really changed, so effects depending on `user` don't re-run and
+    // reload pages mid-edit.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user ?? null);
+        const next = session?.user ?? null;
+        setUser((prev) =>
+          prev && next && prev.id === next.id && prev.updated_at === next.updated_at ? prev : next,
+        );
         setLoading(false);
       }
     );
