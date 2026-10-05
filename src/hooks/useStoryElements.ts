@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUser } from "@/hooks/useUser";
+import type { NoteRow } from "@/lib/notes";
 import {
   fromCharacter, fromWorldEntry, toRow,
   type CharacterRow, type ElementPatch, type NewElementType,
@@ -19,6 +20,9 @@ export function useStoryElements(documentId: string | undefined) {
   const { user } = useUser();
   const [elements, setElements] = useState<StoryElement[]>([]);
   const [bibleId, setBibleId] = useState<string | null>(null);
+  // Loaded here too (same request) so the Notes hook doesn't fetch — and
+  // possibly create — the Story Bible a second time.
+  const [noteRows, setNoteRows] = useState<NoteRow[] | null>(null);
   const elementsRef = useRef(elements);
   // Per-element pending field changes, flushed after typing pauses.
   const pending = useRef(new Map<string, { patch: ElementPatch; timer: ReturnType<typeof setTimeout> }>());
@@ -32,9 +36,10 @@ export function useStoryElements(documentId: string | undefined) {
     let cancelled = false;
     fetch(`/api/bible/${documentId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { bible: { id: string }; characters: CharacterRow[]; world: WorldEntryRow[] } | null) => {
+      .then((data: { bible: { id: string }; characters: CharacterRow[]; world: WorldEntryRow[]; notes: NoteRow[] } | null) => {
         if (cancelled || !data) return;
         setBibleId(data.bible.id);
+        setNoteRows(data.notes ?? []);
         setElements([...data.characters.map(fromCharacter), ...data.world.map(fromWorldEntry)]);
       })
       .catch(() => {});
@@ -119,7 +124,7 @@ export function useStoryElements(documentId: string | undefined) {
     return error;
   }, [user, update]);
 
-  return { elements, bibleId, create, update, remove, uploadPhotos };
+  return { elements, bibleId, noteRows, create, update, remove, uploadPhotos };
 }
 
 export type StoryElementsApi = ReturnType<typeof useStoryElements>;

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, GripVertical,
-  Plus, Trash2, Users, MapPin, Sparkles, BookMarked, FileText, FileUp, Loader2,
+  Plus, Trash2, Users, MapPin, Sparkles, BookMarked, FileText, FileUp, Loader2, Globe, NotebookPen,
 } from "lucide-react";
 import {
   buildChapterTree, moveChapter,
@@ -13,6 +13,7 @@ import {
 import { groupElements, type NewElementType, type StoryElement } from "@/lib/storyElements";
 import NewElementMenu from "@/components/editor/NewElementMenu";
 import type { Peer } from "@/hooks/useBookChannel";
+import { byRecent, type Note, type NoteKind } from "@/lib/notes";
 
 interface ChapterSidebarProps {
   documentId: string;
@@ -34,7 +35,13 @@ interface ChapterSidebarProps {
   canEditStructure: boolean;
   /** Other people in the book, shown next to the chapter they have open. */
   peers: Peer[];
+  notes: Note[];
+  /** Open a note in the right sidebar, or the notes list when null. */
+  onOpenNote: (id: string | null) => void;
+  onCreateNote: (kind: NoteKind) => void;
 }
+
+const RECENT_NOTES = 5;
 
 const sectionLabel: React.CSSProperties = {
   fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600,
@@ -51,7 +58,9 @@ export default function ChapterSidebar({
   documentId, chapters, activeChapterId, collapsed, onToggleCollapsed,
   onSelect, onAdd, onRename, onDelete, onMove,
   elements, onOpenElement, onCreateElement, onImport, canEditStructure, peers,
+  notes, onOpenNote, onCreateNote,
 }: ChapterSidebarProps) {
+  const [noteMenuOpen, setNoteMenuOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -328,6 +337,62 @@ export default function ChapterSidebar({
               </div>
             );
           })}
+        </div>
+
+        {/* Notes & research */}
+        <div style={{ borderTop: "1px solid var(--border-color)", padding: "10px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 6px 12px", position: "relative" }}>
+            <button onClick={() => onOpenNote(null)} style={{ ...iconButton, padding: 0, gap: "6px" }} title="Open Notes & Research">
+              <span style={sectionLabel}>Notes &amp; Research</span>
+            </button>
+            <div style={{ display: "flex", gap: "2px" }}>
+              {canEditStructure && (
+                <button title="New note" onClick={() => setNoteMenuOpen((o) => !o)} style={iconButton} aria-expanded={noteMenuOpen}>
+                  <Plus style={{ width: "12px", height: "12px" }} />
+                </button>
+              )}
+              <button title="Open Notes & Research" onClick={() => onOpenNote(null)} style={iconButton}>
+                <NotebookPen style={{ width: "12px", height: "12px" }} />
+              </button>
+            </div>
+            {noteMenuOpen && (
+              <div style={{ position: "absolute", right: "8px", top: "100%", zIndex: 60, background: "var(--bg-elevated)", border: "1px solid var(--border-color)", boxShadow: "0 8px 24px rgba(0,0,0,0.35)", padding: "4px", minWidth: "140px" }}>
+                {([["note", "Note", FileText], ["research", "Research", Globe]] as const).map(([kind, text, Icon]) => (
+                  <button key={kind}
+                    onClick={() => { setNoteMenuOpen(false); onCreateNote(kind); }}
+                    style={{ ...iconButton, width: "100%", gap: "8px", padding: "6px 10px", fontSize: "12px", fontFamily: "var(--font-inter)", color: "var(--text-primary)" }}>
+                    <Icon style={{ width: "12px", height: "12px" }} /> {text}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {notes.length === 0 ? (
+            <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", fontStyle: "italic", padding: "0 12px", margin: 0 }}>
+              Ideas, research and sources.
+            </p>
+          ) : (
+            <>
+              {[...notes].sort(byRecent).slice(0, RECENT_NOTES).map((n) => {
+                const Icon = n.kind === "research" ? Globe : FileText;
+                return (
+                  <button key={n.id} onClick={() => onOpenNote(n.id)}
+                    style={{ ...iconButton, width: "100%", justifyContent: "flex-start", gap: "8px", padding: "3px 12px 3px 16px" }}>
+                    <Icon style={{ width: "11px", height: "11px", flexShrink: 0 }} />
+                    <span style={{ fontSize: "11.5px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {n.title || "Untitled"}
+                    </span>
+                  </button>
+                );
+              })}
+              {notes.length > RECENT_NOTES && (
+                <button onClick={() => onOpenNote(null)}
+                  style={{ ...iconButton, padding: "4px 12px 0 35px", fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--gold-primary)" }}>
+                  View all {notes.length}
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -24,12 +24,15 @@ import {
   LayoutList,
   History,
   Share2,
+  NotebookPen,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { Editor } from "@tiptap/react";
 import { useEditorPrefs } from "@/hooks/useEditorPrefs";
 import { useStoryElements } from "@/hooks/useStoryElements";
+import { useNotes } from "@/hooks/useNotes";
+import type { NoteKind } from "@/lib/notes";
 import type { NewElementType } from "@/lib/storyElements";
 import type { OutlineTemplate } from "@/lib/outlineTemplates";
 import GuidanceBanner from "@/components/editor/GuidanceBanner";
@@ -103,6 +106,10 @@ const RevisionPanel = dynamic(
   () => import("@/components/editor/RevisionPanel"),
   { ssr: false },
 );
+
+const NotesPanel = dynamic(() => import("@/components/editor/NotesPanel"), {
+  ssr: false,
+});
 
 const StoryElementPanel = dynamic(
   () => import("@/components/editor/StoryElementPanel"),
@@ -275,6 +282,11 @@ const [chatSelectedText, setChatSelectedText] = useState("");
   const [elementsOpen, setElementsOpen] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const storyElements = useStoryElements(doc?.id);
+  const notesApi = useNotes(storyElements.bibleId, storyElements.noteRows);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  // Live editor selection (empty when nothing is selected), for clipping to notes.
+  const [editorSelection, setEditorSelection] = useState("");
   // Supabase hands out a new `user` object on every auth event (tab refocus,
   // hourly token refresh), so anything that should run once per sign-in keys
   // on the id. Keying on the object reloaded the book and jumped to chapter 1.
@@ -374,9 +386,9 @@ useEffect(() => {
   if (!editor) return;
   const updateSelection = () => {
     const { from, to } = editor.state.selection;
-    if (from === to) return;
-    const text = editor.state.doc.textBetween(from, to, " ").trim();
-    if (text.length > 20) setChatSelectedText(text);
+    const text = from === to ? "" : editor.state.doc.textBetween(from, to, "\n").trim();
+    setEditorSelection(text);
+    if (text.length > 20) setChatSelectedText(text.replace(/\s*\n\s*/g, " "));
   };
   editor.on("selectionUpdate", updateSelection);
   return () => { editor.off("selectionUpdate", updateSelection); };
@@ -680,7 +692,8 @@ useEffect(() => {
       | "illustrator"
       | "storyboard"
       | "elements"
-      | "history",
+      | "history"
+      | "notes",
   ) => {
     setChatOpen(panel === "chat" ? (o) => !o : false);
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
@@ -691,7 +704,50 @@ useEffect(() => {
     setStoryboardOpen(panel === "storyboard" ? (o) => !o : false);
     setElementsOpen(panel === "elements" ? (o) => !o : false);
     setRevisionsOpen(panel === "history" ? (o) => !o : false);
+    setNotesOpen(panel === "notes" ? (o) => !o : false);
   };
+
+  // Show a note (or the notes list, for null) in the right sidebar.
+  const openNote = (noteId: string | null) => {
+    openRightPanel("notes");
+    setNotesOpen(true);
+    setSelectedNoteId(noteId);
+  };
+
+  const createNote = async (kind: NoteKind) => {
+    const note = await notesApi.create({ kind });
+    if (note) openNote(note.id);
+  };
+
+  // ⌘⇧N: clip the selected text into a note linked to this chapter (or start
+  // an empty note when nothing is selected).
+  const quickNote = async () => {
+    if (!canEditBook || !notesApi.ready) return;
+    const text = editorSelection.trim();
+    const note = await notesApi.create(
+      text
+        ? {
+            kind: "note",
+            title: text.length > 48 ? `${text.slice(0, 48).trim()}…` : text,
+            content: `${text.split("\n").map((line) => `> ${line}`).join("\n")}\n\n`,
+            chapterId: activeChapterId,
+          }
+        : { kind: "note", chapterId: activeChapterId },
+    );
+    if (note) openNote(note.id);
+  };
+  const quickNoteRef = useRef(quickNote);
+  useEffect(() => { quickNoteRef.current = quickNote; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        void quickNoteRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Show one story element's details in the right sidebar.
   const openElement = (elementId: string | null) => {
@@ -715,7 +771,8 @@ useEffect(() => {
       illustratorOpen ||
       storyboardOpen ||
       elementsOpen ||
-      revisionsOpen) &&
+      revisionsOpen ||
+      notesOpen) &&
     !focusMode;
 
   if (loadError) {
@@ -1160,6 +1217,9 @@ useEffect(() => {
             onImport={importIntoBook}
             canEditStructure={canEditBook}
             peers={peers}
+            notes={notesApi.notes}
+            onOpenNote={openNote}
+            onCreateNote={(kind) => void createNote(kind)}
           />
         )}
 
@@ -1296,6 +1356,12 @@ useEffect(() => {
                 active={elementsOpen}
                 onClick={() => openRightPanel("elements")}
               />
+              <ActionButton
+                icon={NotebookPen}
+                label="Notes & Research (⌘⇧N)"
+                active={notesOpen}
+                onClick={() => openRightPanel("notes")}
+              />
               {isOwner && (
                 <ActionButton
                   icon={History}
@@ -1368,6 +1434,23 @@ useEffect(() => {
       await reloadAfterRestore();
       notify("reload");
     }}
+  />
+)}
+{doc && (
+  <NotesPanel
+    api={notesApi}
+    chapters={chapters}
+    activeChapterId={activeChapterId}
+    selectedId={selectedNoteId}
+    onSelect={setSelectedNoteId}
+    selectionText={editorSelection}
+    onGoToChapter={(chapterId) => {
+      selectChapter(chapterId);
+      setView("write");
+    }}
+    isOpen={notesOpen}
+    onClose={() => setNotesOpen(false)}
+    readOnly={!canEditBook}
   />
 )}
 {doc && (

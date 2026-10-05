@@ -17,6 +17,11 @@ export async function POST(req: Request, { params }: RouteParams) {
       bible_id: bibleId,
       user_id: user.id,
       title: body.title ?? "New Note",
+      // Optional fields used by the editor's Notes & Research panel.
+      ...(body.content !== undefined && { content: body.content }),
+      ...(body.kind === "research" && { kind: "research" }),
+      ...(body.sourceUrl && { source_url: body.sourceUrl }),
+      ...(body.chapterId && { chapter_id: body.chapterId }),
     })
     .select()
     .single();

@@ -23,6 +23,9 @@ const updateData: Record<string, unknown> = {};
 for (const [key, value] of Object.entries(rest)) {
   updateData[toSnake(key)] = value;
 }
+// Set last so a stale timestamp in the body (the Story Bible page sends the
+// whole note) can't overwrite it.
+updateData.updated_at = new Date().toISOString();
 
 const { data: note, error } = await supabase
   .from("bible_notes")
