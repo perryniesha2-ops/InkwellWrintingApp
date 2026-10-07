@@ -652,6 +652,20 @@ export function processContent(html: string, settings: EpubSettings): string {
 
   const sceneBreakChar = SCENE_BREAK_CHARS[settings.sceneBreak];
 
+  // Typographic replacements must only touch text, never tag attributes —
+  // turning attribute quotes into curly quotes produces invalid XHTML.
+  const smartenText = (text: string) =>
+    text
+      // Smart quotes
+      .replace(/(\s|^)"(\S)/g, "$1\u201c$2")
+      .replace(/(\S)"(\s|$|[.,!?;:])/g, "$1\u201d$2")
+      .replace(/(\s|^)'(\S)/g, "$1\u2018$2")
+      .replace(/(\S)'(\s|$|[.,!?;:])/g, "$1\u2019$2")
+      // Em dashes
+      .replace(/--/g, "\u2014")
+      // Ellipsis
+      .replace(/\.\.\./g, "\u2026");
+
   return html
     // Fix br inside p — convert to paragraph breaks instead
     .replace(/<p([^>]*)>(.*?)<br\s*\/?>(.*?)<\/p>/gi, (_, attrs, before, after) => {
@@ -662,18 +676,14 @@ export function processContent(html: string, settings: EpubSettings): string {
     .replace(/<br\s*\/?>/gi, "</p><p>")
     // Scene breaks
     .replace(/<hr\s*\/?>/gi, `<p class="scene-break">${sceneBreakChar}</p>`)
-    // Smart quotes
-    .replace(/(\s|^)"(\S)/g, "$1\u201c$2")
-    .replace(/(\S)"(\s|$|[.,!?;:])/g, "$1\u201d$2")
-    .replace(/(\s|^)'(\S)/g, "$1\u2018$2")
-    .replace(/(\S)'(\s|$|[.,!?;:])/g, "$1\u2019$2")
-    // Em dashes
-    .replace(/--/g, "\u2014")
-    // Ellipsis
-    .replace(/\.\.\./g, "\u2026")
+    // Self-close remaining void elements (XHTML requires it)
+    .replace(/<(img|input|col|source|wbr)\b([^>]*?)\s*\/?>/gi, "<$1$2 />")
+    .split(/(<[^>]*>)/)
+    .map((part) => (part.startsWith("<") ? part : smartenText(part)))
+    .join("")
+    // &nbsp; is not a predefined XML entity
+    .replace(/&nbsp;/g, "&#160;")
     // Clean empty paragraphs
-    .replace(/<p>\s*<\/p>/g, '<p class="no-indent">&nbsp;</p>')
-    // Fix any remaining br tags inside p
-    .replace(/<p([^>]*)>\s*<br\s*\/?>\s*<\/p>/gi, '<p$1>&nbsp;</p>')
+    .replace(/<p>\s*<\/p>/g, '<p class="no-indent">&#160;</p>')
     .trim();
 }

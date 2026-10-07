@@ -1989,6 +1989,7 @@ const deleteTimelineEvent = async (eventId: string) => {
                             width: "100%",
                             height: "100%",
                             objectFit: "cover",
+                            objectPosition: "center top",
                           }}
                         />
                         <button

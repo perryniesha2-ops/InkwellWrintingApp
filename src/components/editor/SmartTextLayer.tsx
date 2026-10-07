@@ -22,7 +22,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 function Avatar({ el, size }: { el: StoryElement; size: number }) {
   return el.photos[0] ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={el.photos[0]} alt="" style={{ width: size, height: size, objectFit: "cover", flexShrink: 0 }} />
+    <img src={el.photos[0]} alt="" style={{ width: size, height: size, objectFit: "cover", objectPosition: "center top", flexShrink: 0 }} />
   ) : (
     <div style={{
       width: size, height: size, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",

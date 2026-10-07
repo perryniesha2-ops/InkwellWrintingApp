@@ -59,7 +59,7 @@ function TextArea({ title, value, placeholder, onChange }: {
 function Thumb({ el, size }: { el: StoryElement; size: number }) {
   return el.photos[0] ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={el.photos[0]} alt="" style={{ width: size, height: size, objectFit: "cover", flexShrink: 0, border: "1px solid var(--border-color)" }} />
+    <img src={el.photos[0]} alt="" style={{ width: size, height: size, objectFit: "cover", objectPosition: "center top", flexShrink: 0, border: "1px solid var(--border-color)" }} />
   ) : (
     <div style={{
       width: size, height: size, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
@@ -93,7 +93,7 @@ function ElementDetail({ el, api, documentId, onBack, readOnly }: {
         {mainPhoto ? (
           <div style={{ position: "relative" }} className="group">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={mainPhoto} alt={el.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block", border: "1px solid var(--border-color)" }} />
+            <img src={mainPhoto} alt={el.name} style={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", objectPosition: "center top", display: "block", border: "1px solid var(--border-color)" }} />
             {!readOnly && <button
               title="Remove photo"
               onClick={() => {
@@ -123,7 +123,7 @@ function ElementDetail({ el, api, documentId, onBack, readOnly }: {
             {el.photos.map((p, i) => (
               <button key={p} onClick={() => setPhotoIndex(i)} style={{ padding: 0, border: p === mainPhoto ? "1px solid var(--gold-primary)" : "1px solid transparent", cursor: "pointer", background: "none" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p} alt="" style={{ width: "40px", height: "40px", objectFit: "cover", display: "block" }} />
+                <img src={p} alt="" style={{ width: "40px", height: "40px", objectFit: "cover", objectPosition: "center top", display: "block" }} />
               </button>
             ))}
             {!readOnly && <button
