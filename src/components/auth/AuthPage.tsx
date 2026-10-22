@@ -143,7 +143,7 @@ if (mode === "signup") {
             {[
               "AI that knows your characters by name",
               "Chapter proofreader & consistency checker",
-              "Readability analysis & scene illustrator",
+              "Readability analysis & version history",
               "Beautiful EPUB export with custom styles",
             ].map((item) => (
               <div key={item} style={{ display: "flex", alignItems: "center", gap: "12px" }}>

@@ -31,7 +31,6 @@ import {
   type ReactNode,
 } from "react";
 import type { Editor } from "@tiptap/react";
-import InlineAIToolbar from "@/components/editor/InlineAIToolbar";
 import { fixHtmlParagraphs, plainTextToHtml } from "@/lib/formatParagraphs";
 import TextAlign from "@tiptap/extension-text-align";
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
@@ -54,8 +53,6 @@ interface EditorProps {
   placeholder?: string;
   editorStyle?: CSSProperties;
   onEditorReady?: (editor: Editor) => void;
-  genre?: string;
-  bibleContext?: string;
   focusMode?: boolean;
   storyElements?: StoryElement[];
   onOpenElement?: (id: string) => void;
@@ -117,8 +114,6 @@ export default function WritingEditor({
   placeholder,
   editorStyle = {},
   onEditorReady,
-  genre,
-  bibleContext,
   focusMode,
   storyElements = [],
   onOpenElement,
@@ -245,29 +240,6 @@ export default function WritingEditor({
       editor.view.dispatch(editor.state.tr.setMeta(SMART_TEXT_REFRESH, true));
     }
   }, [editor, terms, smartText]);
-
-  const handleReplace = useCallback(
-    (newText: string) => {
-      if (!editor) return;
-      const { from, to } = editor.state.selection;
-      editor
-        .chain()
-        .focus()
-        .deleteRange({ from, to })
-        .insertContentAt(from, newText)
-        .run();
-    },
-    [editor],
-  );
-
-  const handleInsertAfter = useCallback(
-    (text: string) => {
-      if (!editor) return;
-      const { to } = editor.state.selection;
-      editor.chain().focus().insertContentAt(to, text).run();
-    },
-    [editor],
-  );
 
   if (collab && (!session || !editor)) {
     return (
@@ -426,9 +398,9 @@ export default function WritingEditor({
     background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
     color: "var(--text-primary)", fontSize: "11px", fontFamily: "var(--font-inter)",
     padding: "4px 8px", whiteSpace: "nowrap", pointerEvents: "none",
-    opacity: 0, transition: "opacity 0.15s", zIndex: 50,
+    transition: "opacity 0.15s", zIndex: 50,
   }}
-    className="group-hover:opacity-100">
+    className="opacity-0 group-hover:opacity-100">
     Fix Paragraphs
   </div>
 </div>
@@ -507,14 +479,6 @@ export default function WritingEditor({
           </div>
         </div>
       </div>
-      {/* ── Inline AI toolbar ── */}
-      <InlineAIToolbar
-        editorEl={editorContainerRef}
-        onReplace={handleReplace}
-        onInsertAfter={handleInsertAfter}
-        genre={genre}
-        bibleContext={bibleContext}
-      />
       <SmartTextLayer
         suggestion={smartText ? suggestion : null}
         elements={storyElements}

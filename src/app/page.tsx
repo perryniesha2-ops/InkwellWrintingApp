@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   Feather,
-  Zap,
+  History,
   Shield,
   BookOpen,
   BarChart2,
@@ -35,9 +35,9 @@ const FEATURES = [
     desc: "Flesch scores, sentence variety, passive voice, dialogue ratio. Know your prose inside out.",
   },
   {
-    icon: Zap,
-    label: "Inline AI",
-    desc: "Select any passage. Improve, expand, add tension, convert to dialogue without leaving your flow.",
+    icon: History,
+    label: "Version History",
+    desc: "Every draft is saved automatically. Name milestones, compare versions, and restore any point in time.",
   },
   {
     icon: Feather,
@@ -51,7 +51,7 @@ const INKWELL_HAS = [
   "Chapter-by-chapter proofreader",
   "Consistency checker vs. your characters",
   "Readability & prose analysis",
-  "Scene illustrator with prompt gen",
+  "Version history with draft compare",
   "Context-aware suggestions",
 ];
 
@@ -60,7 +60,7 @@ const OTHERS_LACK = [
   "AI that forgets your characters",
   "No proofreading or analysis",
   "Generic suggestions for any genre",
-  "Copy-paste to image tools",
+  "No way to compare drafts",
   "No story context awareness",
 ];
 

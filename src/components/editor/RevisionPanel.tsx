@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bookmark, Check, History, Loader2, Pencil, RotateCcw, ShieldCheck, Trash2, X,
+  Bookmark, Check, GitCompare, History, Loader2, Pencil, RotateCcw, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import VersionCompare from "@/components/editor/VersionCompare";
 
 interface Revision {
   id: string;
@@ -47,12 +48,18 @@ function dayLabel(iso: string): string {
 
 const defaultTitle = (r: Revision) => r.name || (r.kind === "auto" ? "Auto-save" : "Saved revision");
 
-function Preview({ documentId, revision, onClose, onRestore }: {
+type PreviewMode = "read" | "compare";
+
+function Preview({ documentId, revision, revisions, initialMode, flushSave, onClose, onRestore }: {
   documentId: string;
   revision: Revision;
+  revisions: Revision[];
+  initialMode: PreviewMode;
+  flushSave: () => Promise<void>;
   onClose: () => void;
   onRestore: () => Promise<string | null>;
 }) {
+  const [mode, setMode] = useState<PreviewMode>(initialMode);
   const [html, setHtml] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -74,8 +81,20 @@ function Preview({ documentId, revision, onClose, onRestore }: {
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
             <div style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "15px", color: "var(--text-primary)" }}>{defaultTitle(revision)}</div>
             <div style={{ fontFamily: "var(--font-inter)", fontSize: "11.5px", color: "var(--text-dim)" }}>
-              {fullLabel(revision.created_at)} · {revision.word_count.toLocaleString()} words · read-only preview
+              {fullLabel(revision.created_at)} · {revision.word_count.toLocaleString()} words · read-only
             </div>
+          </div>
+          <div role="tablist" style={{ display: "flex", border: "1px solid var(--border-color)" }}>
+            {(["read", "compare"] as const).map((m) => (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => setMode(m)}
+                style={{ padding: "5px 12px", fontSize: "12px", fontFamily: "var(--font-inter)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px", background: mode === m ? "var(--bg-elevated)" : "transparent", color: mode === m ? "var(--text-primary)" : "var(--text-muted)" }}>
+                {m === "read" ? "Read" : <><GitCompare style={{ width: "12px", height: "12px" }} /> Compare</>}
+              </button>
+            ))}
           </div>
           {confirming ? (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -110,8 +129,10 @@ function Preview({ documentId, revision, onClose, onRestore }: {
           <button onClick={onClose} disabled={restoring} style={iconButton}><X style={{ width: "15px", height: "15px" }} /></button>
         </div>
         {error && <p style={{ margin: 0, padding: "8px 20px", fontFamily: "var(--font-inter)", fontSize: "12px", color: "#ef4444", borderBottom: "1px solid var(--border-color)" }}>{error}</p>}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px" }}>
-          {html === null && !error ? (
+        <div style={{ flex: 1, overflowY: "auto", padding: mode === "compare" ? "20px 24px" : "32px 24px" }}>
+          {mode === "compare" ? (
+            <VersionCompare documentId={documentId} revision={revision} revisions={revisions} flushSave={flushSave} />
+          ) : html === null && !error ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "48px" }}>
               <Loader2 className="animate-spin" style={{ width: "18px", height: "18px", color: "var(--gold-primary)" }} />
             </div>
@@ -134,7 +155,7 @@ export default function RevisionPanel({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [previewing, setPreviewing] = useState<Revision | null>(null);
+  const [previewing, setPreviewing] = useState<{ revision: Revision; mode: PreviewMode } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -281,7 +302,7 @@ export default function RevisionPanel({
                       <div
                         key={r.id}
                         className="group"
-                        onClick={() => { if (renaming !== r.id && confirmDelete !== r.id) setPreviewing(r); }}
+                        onClick={() => { if (renaming !== r.id && confirmDelete !== r.id) setPreviewing({ revision: r, mode: "read" }); }}
                         style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 12px 7px 16px", cursor: "pointer" }}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)"; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
@@ -323,6 +344,7 @@ export default function RevisionPanel({
                           </div>
                         ) : (
                           <div className="opacity-0 group-hover:opacity-100" style={{ display: "flex", gap: "2px" }} onClick={(e) => e.stopPropagation()}>
+                            <button title="Compare with current draft" onClick={() => setPreviewing({ revision: r, mode: "compare" })} style={iconButton}><GitCompare style={{ width: "11px", height: "11px" }} /></button>
                             <button title={r.name ? "Rename" : "Name this revision"} onClick={() => { setRenaming(r.id); setDraft(r.name ?? ""); }} style={iconButton}><Pencil style={{ width: "11px", height: "11px" }} /></button>
                             <button title="Delete" onClick={() => setConfirmDelete(r.id)} style={iconButton}><Trash2 style={{ width: "11px", height: "11px" }} /></button>
                           </div>
@@ -338,10 +360,14 @@ export default function RevisionPanel({
       </AnimatePresence>
       {previewing && (
         <Preview
+          key={`${previewing.revision.id}-${previewing.mode}`}
           documentId={documentId}
-          revision={previewing}
+          revision={previewing.revision}
+          revisions={revisions ?? []}
+          initialMode={previewing.mode}
+          flushSave={flushSave}
           onClose={() => setPreviewing(null)}
-          onRestore={() => restore(previewing)}
+          onRestore={() => restore(previewing.revision)}
         />
       )}
     </>

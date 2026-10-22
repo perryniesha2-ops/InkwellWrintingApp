@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   SpellCheck,
   BarChart2,
-  MessageSquare,
   ImagePlus,
   Users,
   PenLine,
@@ -44,7 +43,6 @@ import {
   type Chapter, type DropPosition,
 } from "@/lib/chapters";
 import { BookText } from "lucide-react";
-import { Palette } from "lucide-react";
 import { LayoutTemplate } from "lucide-react";
 
 
@@ -67,9 +65,6 @@ const ReadabilityPanel = dynamic(
   () => import("@/components/editor/ReadabilityPanel"),
   { ssr: false },
 );
-const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
-  ssr: false,
-});
 const ExportMenu = dynamic(() => import("@/components/editor/ExportMenu"), {
   ssr: false,
 });
@@ -79,10 +74,6 @@ const EditorSettings = dynamic(
 );
 const ThesaurusPanel = dynamic(
   () => import("@/components/editor/ThesaurusPanel"),
-  { ssr: false },
-);
-const SceneIllustrator = dynamic(
-  () => import("@/components/editor/SceneIllustrator"),
   { ssr: false },
 );
 const CoverUpload = dynamic(
@@ -148,6 +139,7 @@ function ActionButton({
     <div className="relative group">
       <button
         onClick={onClick}
+        aria-label={label}
         style={{
           width: "36px",
           height: "36px",
@@ -207,10 +199,12 @@ function ActionButton({
           padding: "4px 8px",
           whiteSpace: "nowrap",
           pointerEvents: "none",
-          opacity: 0,
           transition: "opacity 0.15s",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+          zIndex: 50,
         }}
-        className="group-hover:opacity-100"
+        // Opacity must live in classes: an inline opacity would override the hover class.
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {label}
       </div>
@@ -250,7 +244,6 @@ export function EditorPage({ id }: EditorPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
   const [consistencyOpen, setConsistencyOpen] = useState(false);
   const [grammarOpen, setGrammarOpen] = useState(false);
   const [readabilityOpen, setReadabilityOpen] = useState(false);
@@ -260,7 +253,6 @@ export function EditorPage({ id }: EditorPageProps) {
 
   const [thesaurusOpen, setThesaurusOpen] = useState(false);
 
-  const [illustratorOpen, setIllustratorOpen] = useState(false);
 
   const titleRef = useRef(title);
   const genreRef = useRef(genre);
@@ -278,7 +270,6 @@ export function EditorPage({ id }: EditorPageProps) {
  const coverButtonRef = useRef<HTMLButtonElement>(null);
 const [coverButtonPos, setCoverButtonPos] = useState({ top: 0, right: 0 });
 const [storyboardOpen, setStoryboardOpen] = useState(false);
-const [chatSelectedText, setChatSelectedText] = useState("");
   const [elementsOpen, setElementsOpen] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const storyElements = useStoryElements(doc?.id);
@@ -388,7 +379,6 @@ useEffect(() => {
     const { from, to } = editor.state.selection;
     const text = from === to ? "" : editor.state.doc.textBetween(from, to, "\n").trim();
     setEditorSelection(text);
-    if (text.length > 20) setChatSelectedText(text.replace(/\s*\n\s*/g, " "));
   };
   editor.on("selectionUpdate", updateSelection);
   return () => { editor.off("selectionUpdate", updateSelection); };
@@ -684,23 +674,19 @@ useEffect(() => {
 
   const openRightPanel = (
     panel:
-      | "chat"
       | "consistency"
       | "grammar"
       | "readability"
       | "thesaurus"
-      | "illustrator"
       | "storyboard"
       | "elements"
       | "history"
       | "notes",
   ) => {
-    setChatOpen(panel === "chat" ? (o) => !o : false);
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
     setGrammarOpen(panel === "grammar" ? (o) => !o : false);
     setReadabilityOpen(panel === "readability" ? (o) => !o : false);
     setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
-    setIllustratorOpen(panel === "illustrator" ? (o) => !o : false);
     setStoryboardOpen(panel === "storyboard" ? (o) => !o : false);
     setElementsOpen(panel === "elements" ? (o) => !o : false);
     setRevisionsOpen(panel === "history" ? (o) => !o : false);
@@ -763,12 +749,10 @@ useEffect(() => {
   
 
   const anyRightPanelOpen =
-    (chatOpen ||
-      consistencyOpen ||
+    (consistencyOpen ||
       readabilityOpen ||
       grammarOpen ||
       thesaurusOpen ||
-      illustratorOpen ||
       storyboardOpen ||
       elementsOpen ||
       revisionsOpen ||
@@ -1266,8 +1250,6 @@ useEffect(() => {
               onChange={handleContentChange}
               editorStyle={editorStyle}
               onEditorReady={setEditor}
-              genre={genre}
-              bibleContext={bibleContext}
               focusMode={focusMode}
               storyElements={storyElements.elements}
               onOpenElement={openElement}
@@ -1337,12 +1319,6 @@ useEffect(() => {
                 active={thesaurusOpen}
                 onClick={() => openRightPanel("thesaurus")}
               />
-              <ActionButton
-                icon={Palette}
-                label="Scene Illustrator"
-                active={illustratorOpen}
-                onClick={() => openRightPanel("illustrator")}
-              />
               <div
                 style={{
                   height: "1px",
@@ -1371,12 +1347,6 @@ useEffect(() => {
                 />
               )}
               <ActionButton
-                icon={MessageSquare}
-                label="AI Assistant"
-                active={chatOpen}
-                onClick={() => openRightPanel("chat")}
-              />
-              <ActionButton
                 icon={LayoutTemplate}
                 label="Storyboard"
                 active={storyboardOpen}
@@ -1387,17 +1357,6 @@ useEffect(() => {
         </AnimatePresence>
 
         {/* Right panels */}
-        {ChatPanel && (
-  <ChatPanel
-    documentContent={content}
-    documentId={doc?.id}
-    genre={genre}
-    bibleContext={bibleContext}
-    isOpen={chatOpen}
-    onToggle={() => openRightPanel("chat")}
-    selectedText={chatSelectedText}
-  />
-)}
         {ConsistencyChecker && (
           <ConsistencyChecker
             content={content}
@@ -1490,15 +1449,6 @@ useEffect(() => {
           editor={editor}
           isOpen={thesaurusOpen}
           onClose={() => setThesaurusOpen(false)}
-        />
-      )}
-      {SceneIllustrator && (
-        <SceneIllustrator
-          editor={editor}
-          genre={genre}
-          bibleContext={bibleContext}
-          isOpen={illustratorOpen}
-          onClose={() => setIllustratorOpen(false)}
         />
       )}
 
