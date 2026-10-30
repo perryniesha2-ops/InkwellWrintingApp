@@ -21,7 +21,12 @@ import {
   ChevronUp,
   X,
   Clock,
+  NotebookPen,
 } from "lucide-react";
+import CharacterQuestionnaire, { type SaveStatus } from "@/components/bible/CharacterQuestionnaire";
+import {
+  normalizeAnswers, overallProgress, type QuestionnaireAnswers,
+} from "@/lib/characterQuestionnaire";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -65,6 +70,7 @@ interface Character {
   emotionalWound?: string | null;
   notes?: string | null;
   color?: string | null;
+  questionnaire?: QuestionnaireAnswers | null;
 }
 
 interface OutlineSection {
@@ -137,6 +143,21 @@ interface TimelineEvent {
 }
 
 // ── Field components ───────────────────────────────────
+
+/**
+ * The API returns database rows (snake_case); this page works in camelCase
+ * and the PATCH routes convert back. Without this, multi-word fields such as
+ * skin_tone or external_goal never show up after a reload.
+ */
+function camelize<T>(row: unknown): T {
+  if (!row || typeof row !== "object") return row as T;
+  return Object.fromEntries(
+    Object.entries(row as Record<string, unknown>).map(([key, value]) => [
+      key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+      value,
+    ]),
+  ) as T;
+}
 
 function Field({
   label, value, onChange, multiline = false, placeholder, hint,
@@ -402,12 +423,12 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
           timeline?: TimelineEvent[];
         }) => {
           setBible(data.bible);
-          setCharacters(data.characters ?? []);
-          setOutlineSections(data.outline ?? []);
-          setWorldEntries(data.world ?? []);
-          setNotes(data.notes ?? []);
+          setCharacters((data.characters ?? []).map((c) => camelize<Character>(c)));
+          setOutlineSections((data.outline ?? []).map((o) => camelize<OutlineSection>(o)));
+          setWorldEntries((data.world ?? []).map((w) => camelize<WorldEntry>(w)));
+          setNotes((data.notes ?? []).map((n) => camelize<BibleNote>(n)));
           setDocTitle(data.docTitle ?? "Your Story");
-          setTimelineEvents(data.timeline ?? []);
+          setTimelineEvents((data.timeline ?? []).map((e) => camelize<TimelineEvent>(e)));
 
           setLoading(false);
         },
@@ -424,7 +445,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "New Character" }),
     });
-    const char = (await res.json()) as Character;
+    const char = camelize<Character>(await res.json());
     setCharacters((prev) => [...prev, char]);
     setActiveCharacter(char);
   };
@@ -437,7 +458,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(char),
       });
-      const updated = (await res.json()) as Character;
+      const updated = camelize<Character>(await res.json());
       setCharacters((prev) =>
         prev.map((c) => (c.id === char.id ? updated : c)),
       );
@@ -456,6 +477,55 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
     setActiveCharacter(null);
   };
 
+  // ── Character questionnaire (autosaves on its own) ──
+
+  const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
+  const [questionnaireStatus, setQuestionnaireStatus] = useState<SaveStatus>("saved");
+  const questionnairePending = useRef<{
+    charId: string; answers: QuestionnaireAnswers; timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  const flushQuestionnaire = async () => {
+    const pending = questionnairePending.current;
+    if (!pending || !bible) return;
+    clearTimeout(pending.timer);
+    questionnairePending.current = null;
+    try {
+      const res = await fetch(`/api/bible/${bible.id}/characters/${pending.charId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionnaire: pending.answers }),
+      });
+      if (!res.ok) throw new Error();
+      if (!questionnairePending.current) setQuestionnaireStatus("saved");
+    } catch {
+      setQuestionnaireStatus("error");
+    }
+  };
+  const flushQuestionnaireRef = useRef(flushQuestionnaire);
+  useEffect(() => { flushQuestionnaireRef.current = flushQuestionnaire; });
+  // Save anything still pending when leaving the page.
+  useEffect(() => () => { void flushQuestionnaireRef.current(); }, []);
+
+  const updateQuestionnaire = (charId: string, answers: QuestionnaireAnswers) => {
+    setCharacters((prev) => prev.map((c) => (c.id === charId ? { ...c, questionnaire: answers } : c)));
+    setActiveCharacter((prev) => (prev?.id === charId ? { ...prev, questionnaire: answers } : prev));
+    setQuestionnaireStatus("saving");
+    const pending = questionnairePending.current;
+    if (pending && pending.charId !== charId) void flushQuestionnaire();
+    if (pending) clearTimeout(pending.timer);
+    questionnairePending.current = {
+      charId,
+      answers,
+      timer: setTimeout(() => void flushQuestionnaireRef.current(), 800),
+    };
+  };
+
+  const closeQuestionnaire = () => {
+    void flushQuestionnaire();
+    setQuestionnaireOpen(false);
+  };
+
   // ── Outline ─────────────────────────────────────────
 
   const addSection = async () => {
@@ -469,7 +539,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
         orderIndex: outlineSections.length,
       }),
     });
-    const section = (await res.json()) as OutlineSection;
+    const section = camelize<OutlineSection>(await res.json());
     setOutlineSections((prev) => [...prev, section]);
     setActiveSection(section);
   };
@@ -485,7 +555,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(section),
     });
-    const updated = await res.json() as OutlineSection;
+    const updated = camelize<OutlineSection>(await res.json());
     setOutlineSections((prev) => prev.map((s) => s.id === section.id ? updated : s));
     setActiveSection(updated);
   } finally { setSaving(false); }
@@ -509,7 +579,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "New Entry", category: "location" }),
     });
-    const entry = (await res.json()) as WorldEntry;
+    const entry = camelize<WorldEntry>(await res.json());
     setWorldEntries((prev) => [...prev, entry]);
     setActiveWorld(entry);
   };
@@ -522,7 +592,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
       });
-      const updated = (await res.json()) as WorldEntry;
+      const updated = camelize<WorldEntry>(await res.json());
       setWorldEntries((prev) =>
         prev.map((w) => (w.id === entry.id ? updated : w)),
       );
@@ -610,7 +680,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "New Note" }),
     });
-    const note = (await res.json()) as BibleNote;
+    const note = camelize<BibleNote>(await res.json());
     setNotes((prev) => [...prev, note]);
     setActiveNote(note);
   };
@@ -623,7 +693,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(note),
       });
-      const updated = (await res.json()) as BibleNote;
+      const updated = camelize<BibleNote>(await res.json());
       setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       setActiveNote(updated);
     } finally {
@@ -673,7 +743,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
       title: "New Event",
     }),
   });
-  const event = await res.json() as TimelineEvent;
+  const event = camelize<TimelineEvent>(await res.json());
   setTimelineEvents((prev) => [...prev, event]);
   setActiveEvent(event);
 };
@@ -686,7 +756,7 @@ const saveTimelineEvent = async (event: TimelineEvent) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(event),
     });
-    const updated = await res.json() as TimelineEvent;
+    const updated = camelize<TimelineEvent>(await res.json());
     setTimelineEvents((prev) => prev.map((e) => e.id === event.id ? updated : e));
     setActiveEvent(updated);
   } finally { setSaving(false); }
@@ -1580,6 +1650,44 @@ const deleteTimelineEvent = async (eventId: string) => {
                   multiline
                 />
               </Section>
+              <Section title="Character Questionnaire">
+                {(() => {
+                  const progress = overallProgress(normalizeAnswers(activeCharacter.questionnaire));
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <p style={{ margin: 0, fontSize: "13px", fontFamily: "var(--font-inter)", lineHeight: 1.6, color: "var(--text-secondary)" }}>
+                        {progress.total} questions to truly know this character: who they are outside the plot,
+                        what matters to them, how they feel, how they connect with people, and what makes them distinctive.
+                      </p>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => setQuestionnaireOpen(true)}
+                          className="btn-gold"
+                          style={{ display: "flex", alignItems: "center", gap: "6px", padding: "7px 14px", fontSize: "12px", cursor: "pointer" }}>
+                          <NotebookPen style={{ width: "13px", height: "13px" }} />
+                          {progress.answered ? "Continue questionnaire" : "Start questionnaire"}
+                        </button>
+                        <span style={{ fontSize: "12px", fontFamily: "var(--font-inter)", color: "var(--text-dim)" }}>
+                          {progress.answered} of {progress.total} answered
+                        </span>
+                      </div>
+                      <div style={{ height: "3px", background: "var(--border-color)" }}>
+                        <div style={{ height: "100%", width: `${(progress.answered / progress.total) * 100}%`, background: "var(--gold-primary)" }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </Section>
+              {questionnaireOpen && (
+                <CharacterQuestionnaire
+                  character={activeCharacter}
+                  storyTitle={docTitle}
+                  value={normalizeAnswers(activeCharacter.questionnaire)}
+                  onChange={(answers) => updateQuestionnaire(activeCharacter.id, answers)}
+                  status={questionnaireStatus}
+                  onClose={closeQuestionnaire}
+                />
+              )}
               <Section title="Romance" defaultOpen={false}>
                 <Field
                   label="Attachment Style"
