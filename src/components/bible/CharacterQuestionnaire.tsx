@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Download, Loader2, NotebookPen, X } from "lucide-react";
 import {
-  DONT_KNOW_YET, QUESTIONNAIRE, QUESTIONNAIRE_SUBTITLE, QUESTIONNAIRE_TITLE,
+  DONT_KNOW_YET, QUESTIONNAIRE, QUESTIONNAIRE_TITLE,
   overallProgress, partHeading, questionnaireToMarkdown,
   type QuestionnaireAnswers, type QuestionnaireItem,
 } from "@/lib/characterQuestionnaire";
@@ -140,8 +140,7 @@ export default function CharacterQuestionnaire({
 
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <div style={{ maxWidth: "720px", margin: "0 auto", padding: "28px 16px 64px" }}>
-          <h2 style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 800, fontSize: "1.5rem", letterSpacing: "-0.02em", color: "var(--text-primary)", margin: "0 0 4px" }}>{QUESTIONNAIRE_TITLE}</h2>
-          <p style={{ ...font, fontSize: "13.5px", color: "var(--text-muted)", margin: "0 0 16px", fontStyle: "italic" }}>{QUESTIONNAIRE_SUBTITLE}</p>
+          <h2 style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 800, fontSize: "1.5rem", letterSpacing: "-0.02em", color: "var(--text-primary)", margin: "0 0 16px" }}>{QUESTIONNAIRE_TITLE}</h2>
           <p style={{ ...font, fontSize: "13px", lineHeight: 1.7, color: "var(--text-secondary)", margin: "0 0 28px" }}>
             <strong style={{ color: "var(--text-primary)" }}>Character:</strong> {character.name || "—"}<br />
             <strong style={{ color: "var(--text-primary)" }}>Story:</strong> {storyTitle || "—"}

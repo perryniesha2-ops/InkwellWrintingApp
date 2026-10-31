@@ -1656,8 +1656,8 @@ const deleteTimelineEvent = async (eventId: string) => {
                   return (
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                       <p style={{ margin: 0, fontSize: "13px", fontFamily: "var(--font-inter)", lineHeight: 1.6, color: "var(--text-secondary)" }}>
-                        {progress.total} questions to truly know this character: who they are outside the plot,
-                        what matters to them, how they feel, how they connect with people, and what makes them distinctive.
+                        {progress.total} questions about what this character wants and fears, how they talk and act,
+                        the details that make them real, their relationships, and how they change.
                       </p>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                         <button

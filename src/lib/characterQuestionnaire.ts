@@ -1,10 +1,11 @@
 /**
- * "18 Questions to Truly Know Your Character" — a character-discovery
- * questionnaire attached to each character in the Story Bible.
+ * Character questionnaire attached to each character in the Story Bible.
  *
  * Answers are stored per character (characters.questionnaire) keyed by item
- * id (`q1`…`q18`, matching the question numbers), so keep existing questions
- * in place when editing the text; append new ones.
+ * id (`c1`…`c20`, matching the question numbers), so keep existing questions
+ * in place when editing the text; append new ones. If the questions are
+ * replaced wholesale, change the id prefix so old answers aren't shown under
+ * new questions (`q` was used by an earlier 18-question version).
  */
 
 export interface QuestionnaireItem {
@@ -28,58 +29,59 @@ export interface QuestionnaireAnswers {
 
 // ── Content ───────────────────────────────────────────
 
-export const QUESTIONNAIRE_TITLE = "18 Questions to Truly Know Your Character";
-export const QUESTIONNAIRE_SUBTITLE = "A practical character-discovery questionnaire for any genre";
+export const QUESTIONNAIRE_TITLE = "Character Questionnaire";
 
 export const DONT_KNOW_YET = "I don't know yet.";
 
 const PARTS: { title: string; questions: string[] }[] = [
   {
-    title: "Who are they outside the plot?",
+    title: "Wants and fears",
     questions: [
-      "Your character has an entire day free. No work, no obligations, no emergencies. How do they spend it?",
-      "Your character receives unexpectedly good news. What is the news, and what is the first thing they do?",
-      "Your character is spending time with someone they genuinely like. What are they doing together, and what makes that time enjoyable?",
-      "What is something relatively minor that irritates your character, and how do they behave when it happens?",
+      "What does this character want right now, in a way they could name out loud?",
+      "What do they want underneath that, the thing they’d never admit?",
+      "What are they most afraid of losing, and who or what is it tied to?",
+      "What happened in their past that still shapes how they act today?",
+      "What lie do they believe about themselves or the world?",
     ],
   },
   {
-    title: "What matters to them?",
+    title: "Voice and habits",
     questions: [
-      "What does your character want for themselves that has nothing to do with the immediate conflict of the novel?",
-      "Your character must choose between getting something they badly want and keeping a promise to someone important. What do they choose, and why?",
-      "Someone publicly challenges or embarrasses your character. What bothers them most about the incident, and how do they respond?",
-      "Your character discovers that someone they trust has lied to them. The person claims they had a good reason. What happens next?",
+      "How do they talk when they’re comfortable, and how does that change when they’re scared, angry or attracted to someone?",
+      "What do they do with their hands or body when they’re lying?",
+      "What’s their go-to joke or deflection, and what is it covering for?",
+      "What words or phrases would nobody else in your story say?",
+      "What do they notice first when they walk into a room? (For a thief, that’s the exits. For a mob boss, it might be who’s watching.)",
     ],
   },
   {
-    title: "How do they experience emotions?",
+    title: "Specifics and texture",
     questions: [
-      "Your character works hard for something and fails. What do they feel immediately, and what do they do afterward?",
-      "Your character realizes they're in serious danger and cannot immediately escape. What do they think about first, and what is their first action?",
-      "Someone begins crying in front of your character. How do they respond? Does their response change depending on who is crying?",
-      "Someone unexpectedly shows your character genuine affection, appreciation, or kindness. How do they react?",
-      "Your character becomes extremely angry. What specifically caused that level of anger, and what does it take for them to calm down?",
+      "Where did they grow up, and what’s one detail of that place only they would mention?",
+      "What do they own that they’d grab in a fire, and why?",
+      "What do they eat, drink, listen to or watch when nobody’s looking?",
+      "What’s the most ordinary thing about them, the thing that makes them feel like a person and not a type?",
     ],
   },
   {
-    title: "How do they connect with people?",
+    title: "Relationships and conflict",
     questions: [
-      "Who are the two most important people in your character's life at the beginning of the story? How does your character behave differently with each of them?",
-      "Someone your character cares about needs help at an inconvenient time. What does your character actually do?",
-      "What would make your character genuinely interested in another person beyond physical appearance?",
+      "Who do they call at 2 a.m., and who do they never call?",
+      "Who knows the real version of them, and who only gets the performance?",
+      "What would make them break their own rules, and what rule would they never break?",
+      "How do they behave around someone they’re attracted to but shouldn’t be? (This is the “Malachi’s girl” question: what’s the cost?)",
     ],
   },
   {
-    title: "What makes them distinctive?",
+    title: "Stakes and change",
     questions: [
-      "Describe a situation where your character feels one thing but behaves as though they feel something else. Why is there a difference?",
-      "At the end of the novel, what is one important thing your character might do differently than they would at the beginning? What part of them would remain unchanged?",
+      "What would they have to give up to get what they want?",
+      "How should they be different by the last page, and what would force that change?",
     ],
   },
 ];
 
-// Questions are numbered continuously across parts (1–18).
+// Questions are numbered continuously across parts.
 let questionNumber = 0;
 export const QUESTIONNAIRE: QuestionnairePart[] = PARTS.map((part, i) => ({
   id: `part${i + 1}`,
@@ -87,7 +89,7 @@ export const QUESTIONNAIRE: QuestionnairePart[] = PARTS.map((part, i) => ({
   title: part.title,
   items: part.questions.map((text) => {
     questionNumber += 1;
-    return { id: `q${questionNumber}`, label: String(questionNumber), text };
+    return { id: `c${questionNumber}`, label: String(questionNumber), text };
   }),
 }));
 
@@ -119,7 +121,7 @@ export function normalizeAnswers(raw: unknown): QuestionnaireAnswers {
   };
 }
 
-export const partHeading = (part: QuestionnairePart) => `Part ${part.number} — ${part.title}`;
+export const partHeading = (part: QuestionnairePart) => part.title;
 
 /** The filled-in questionnaire as Markdown, for download. */
 export function questionnaireToMarkdown(
@@ -128,7 +130,6 @@ export function questionnaireToMarkdown(
 ): string {
   const lines: string[] = [
     `# ${QUESTIONNAIRE_TITLE}`,
-    `*${QUESTIONNAIRE_SUBTITLE}*`,
     "",
     `**Character:** ${header.name || "—"}  `,
     `**Story:** ${header.story || "—"}`,
