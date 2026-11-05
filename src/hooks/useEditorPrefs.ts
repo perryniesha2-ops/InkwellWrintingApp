@@ -9,6 +9,11 @@ export interface EditorPrefs {
   fontSize: FontSize;
   /** Story element autocomplete + links while typing. */
   smartText: boolean;
+  /**
+   * Proofread mode: double-click a sentence (or select a passage) to comment,
+   * and comments are highlighted. Off = normal editing.
+   */
+  proofread: boolean;
 }
 
 export const FONT_OPTIONS = [
@@ -58,7 +63,7 @@ export const SIZE_OPTIONS = [
 
 const STORAGE_KEY = "prosr-editor-prefs";
 
-const DEFAULT_PREFS: EditorPrefs = { fontFamily: "cormorant", fontSize: "md", smartText: true };
+const DEFAULT_PREFS: EditorPrefs = { fontFamily: "cormorant", fontSize: "md", smartText: true, proofread: false };
 
 function loadPrefs(): EditorPrefs {
   try {

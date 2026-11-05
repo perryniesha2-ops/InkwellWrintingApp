@@ -11,14 +11,14 @@ export interface Peer extends CollabUser {
 
 /**
  * One Realtime channel per book: presence (who's here and which chapter they
- * have open) plus notifications that the chapter list changed or a revision
- * was restored, so other browsers can refresh.
+ * have open) plus notifications that the chapter list changed, a revision
+ * was restored or comments changed, so other browsers can refresh.
  */
 export function useBookChannel(
   documentId: string | undefined,
   me: CollabUser | null,
   activeChapterId: string | null,
-  handlers: { onTreeChanged: () => void; onReload: () => void },
+  handlers: { onTreeChanged: () => void; onReload: () => void; onCommentsChanged?: () => void },
 ) {
   const [peers, setPeers] = useState<Peer[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -44,6 +44,7 @@ export function useBookChannel(
       })
       .on("broadcast", { event: "tree-changed" }, () => handlersRef.current.onTreeChanged())
       .on("broadcast", { event: "reload" }, () => handlersRef.current.onReload())
+      .on("broadcast", { event: "comments-changed" }, () => handlersRef.current.onCommentsChanged?.())
       .subscribe((status) => {
         if (status === "SUBSCRIBED") void channel.track({ ...me, chapterId: chapterRef.current });
       });
@@ -60,7 +61,7 @@ export function useBookChannel(
     if (me) void channelRef.current?.track({ ...me, chapterId: activeChapterId });
   }, [activeChapterId, me]);
 
-  const notify = (event: "tree-changed" | "reload") => {
+  const notify = (event: "tree-changed" | "reload" | "comments-changed") => {
     void channelRef.current?.send({ type: "broadcast", event, payload: {} });
   };
 

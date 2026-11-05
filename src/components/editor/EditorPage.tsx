@@ -24,6 +24,7 @@ import {
   History,
   Share2,
   NotebookPen,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -38,6 +39,10 @@ import GuidanceBanner from "@/components/editor/GuidanceBanner";
 import { importDocx } from "@/lib/importDocx";
 import { collabUser } from "@/lib/collab/identity";
 import { useBookChannel } from "@/hooks/useBookChannel";
+import { useComments } from "@/hooks/useComments";
+import type { ChapterComment } from "@/lib/comments";
+import type { EditorComments } from "@/components/editor/WritingEditor";
+import { commentIdsInDoc, focusComment } from "@/components/editor/commentExtension";
 import {
   buildChapterTree, compileManuscript, countWords, flattenChapterTree, moveChapter, splitHtmlIntoChapters,
   type Chapter, type DropPosition,
@@ -99,6 +104,9 @@ const RevisionPanel = dynamic(
 );
 
 const NotesPanel = dynamic(() => import("@/components/editor/NotesPanel"), {
+  ssr: false,
+});
+const CommentsPanel = dynamic(() => import("@/components/editor/CommentsPanel"), {
   ssr: false,
 });
 
@@ -276,6 +284,12 @@ const [storyboardOpen, setStoryboardOpen] = useState(false);
   const notesApi = useNotes(storyElements.bibleId, storyElements.noteRows);
   const [notesOpen, setNotesOpen] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  // A comment to scroll to once its chapter has loaded in the editor.
+  const [pendingCommentFocus, setPendingCommentFocus] = useState<string | null>(null);
+  // Comment ids whose text is in the open chapter (null until measured).
+  const [presentCommentIds, setPresentCommentIds] = useState<Set<string> | null>(null);
   // Live editor selection (empty when nothing is selected), for clipping to notes.
   const [editorSelection, setEditorSelection] = useState("");
   // Supabase hands out a new `user` object on every auth event (tab refocus,
@@ -501,11 +515,101 @@ useEffect(() => {
     );
   };
 
+  const notifyCommentsRef = useRef<() => void>(() => {});
+  const onCommentsChanged = useCallback(() => notifyCommentsRef.current(), []);
+  const commentsApi = useComments(doc?.id, onCommentsChanged);
+
   const { peers, notify } = useBookChannel(doc?.id, me, activeChapterId, {
     onTreeChanged: () => void refreshChapters(),
     onReload: () => void reloadAfterRestore(),
+    onCommentsChanged: () => void commentsApi.reload(),
   });
   const notifyTree = () => notify("tree-changed");
+  useEffect(() => { notifyCommentsRef.current = () => notify("comments-changed"); });
+
+  // ── Comments ──
+  const openCommentIds = useMemo(
+    () => new Set(commentsApi.comments.filter((c) => !c.resolved).map((c) => c.id)),
+    [commentsApi.comments],
+  );
+  const openCommentIdsRef = useRef(openCommentIds);
+  useEffect(() => { openCommentIdsRef.current = openCommentIds; }, [openCommentIds]);
+
+  const showComment = useCallback((commentId: string | null) => {
+    setConsistencyOpen(false); setGrammarOpen(false); setReadabilityOpen(false); setThesaurusOpen(false);
+    setStoryboardOpen(false); setElementsOpen(false); setRevisionsOpen(false); setNotesOpen(false);
+    setCommentsOpen(true);
+    setActiveCommentId(commentId);
+  }, []);
+
+  const { create: createComment } = commentsApi;
+  const editorComments = useMemo<EditorComments | undefined>(() => (me ? {
+    isActive: (id) => openCommentIdsRef.current.has(id),
+    onClick: (id) => showComment(id),
+    onCreate: async ({ id, quote, body }) => {
+      const chapterId = activeChapterIdRef.current;
+      if (!chapterId) return "Open a chapter first.";
+      const created = await createComment({ id, chapterId, quote, body, authorName: me.name });
+      if (!created) return "Couldn't save the comment. Check your connection and try again.";
+      showComment(id);
+      return null;
+    },
+  } : undefined), [me, createComment, showComment]);
+
+  // Jump to a comment from the panel, switching chapters if needed.
+  const selectComment = (comment: ChapterComment) => {
+    setActiveCommentId(comment.id);
+    if (comment.chapterId !== activeChapterId) {
+      if (!chapters.some((c) => c.id === comment.chapterId)) return;
+      selectChapter(comment.chapterId);
+      setView("write");
+      setPendingCommentFocus(comment.id);
+    } else if (editor) {
+      focusComment(editor, comment.id);
+    }
+  };
+
+  // After switching chapters, wait for the text (live documents load async).
+  useEffect(() => {
+    if (!pendingCommentFocus || !editor) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (editor.isDestroyed) return;
+      if (focusComment(editor, pendingCommentFocus) || tries > 20) {
+        clearInterval(timer);
+        setPendingCommentFocus(null);
+      }
+    }, 150);
+    return () => clearInterval(timer);
+  }, [pendingCommentFocus, editor]);
+
+  // Track which comments still have text in the open chapter.
+  useEffect(() => {
+    if (!editor) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const measure = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (!editor.isDestroyed) setPresentCommentIds(commentIdsInDoc(editor)); }, 400);
+    };
+    measure();
+    editor.on("update", measure);
+    return () => { clearTimeout(timer); editor.off("update", measure); };
+  }, [editor]);
+
+  // Highlight open comments in the live editor only (saved HTML, exports and
+  // share links show plain text). Ids are UUIDs, so they're safe in CSS.
+  const commentHighlightCss = useMemo(() => {
+    const ids = [...openCommentIds];
+    if (!ids.length) return "";
+    const sel = (id: string) => `.ProseMirror span[data-comment-id="${id}"]`;
+    return [
+      `${ids.map(sel).join(",")}{background:rgba(234,179,8,0.22);border-bottom:2px solid rgba(234,179,8,0.75);cursor:pointer;}`,
+      activeCommentId && openCommentIds.has(activeCommentId)
+        ? `${sel(activeCommentId)}{background:rgba(234,179,8,0.45);}`
+        : "",
+    ].join("");
+  }, [openCommentIds, activeCommentId]);
 
   // Auto-save shortly after typing pauses.
   useEffect(() => {
@@ -681,7 +785,8 @@ useEffect(() => {
       | "storyboard"
       | "elements"
       | "history"
-      | "notes",
+      | "notes"
+      | "comments",
   ) => {
     setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
     setGrammarOpen(panel === "grammar" ? (o) => !o : false);
@@ -691,6 +796,7 @@ useEffect(() => {
     setElementsOpen(panel === "elements" ? (o) => !o : false);
     setRevisionsOpen(panel === "history" ? (o) => !o : false);
     setNotesOpen(panel === "notes" ? (o) => !o : false);
+    setCommentsOpen(panel === "comments" ? (o) => !o : false);
   };
 
   // Show a note (or the notes list, for null) in the right sidebar.
@@ -756,7 +862,8 @@ useEffect(() => {
       storyboardOpen ||
       elementsOpen ||
       revisionsOpen ||
-      notesOpen) &&
+      notesOpen ||
+      commentsOpen) &&
     !focusMode;
 
   if (loadError) {
@@ -1255,6 +1362,9 @@ useEffect(() => {
               onOpenElement={openElement}
               smartText={prefs.smartText}
               onToggleSmartText={() => updatePrefs({ smartText: !prefs.smartText })}
+              comments={prefs.proofread ? editorComments : undefined}
+              proofreading={prefs.proofread}
+              onProofreadingChange={me ? (on) => updatePrefs({ proofread: on }) : undefined}
             />
           )}
         </motion.div>
@@ -1338,6 +1448,12 @@ useEffect(() => {
                 active={notesOpen}
                 onClick={() => openRightPanel("notes")}
               />
+              <ActionButton
+                icon={MessageSquare}
+                label={`Comments${openCommentIds.size ? ` (${openCommentIds.size})` : ""}`}
+                active={commentsOpen}
+                onClick={() => openRightPanel("comments")}
+              />
               {isOwner && (
                 <ActionButton
                   icon={History}
@@ -1393,6 +1509,24 @@ useEffect(() => {
       await reloadAfterRestore();
       notify("reload");
     }}
+  />
+)}
+{prefs.proofread && commentHighlightCss && <style>{commentHighlightCss}</style>}
+{doc && (
+  <CommentsPanel
+    api={commentsApi}
+    chapters={chapters}
+    activeChapterId={activeChapterId}
+    activeCommentId={activeCommentId}
+    presentIds={presentCommentIds}
+    currentUserId={userId}
+    isOwner={isOwner}
+    onSelect={selectComment}
+    onDeleted={(c) => { if (c.chapterId === activeChapterId) editor?.commands.unsetComment(c.id); }}
+    proofreading={prefs.proofread}
+    onStartProofreading={() => updatePrefs({ proofread: true })}
+    isOpen={commentsOpen}
+    onClose={() => setCommentsOpen(false)}
   />
 )}
 {doc && (

@@ -20,6 +20,9 @@ import {
   Redo,
   Minus,
   Sparkles,
+  MessageSquarePlus,
+  PenLine,
+  SpellCheck,
 } from "lucide-react";
 import {
   useCallback,
@@ -39,6 +42,8 @@ import SmartTextLayer from "@/components/editor/SmartTextLayer";
 import { buildTerms } from "@/lib/smartText";
 import type { StoryElement } from "@/lib/storyElements";
 import { useChapterCollab } from "@/hooks/useChapterCollab";
+import { Comment, getPendingComment, selectSentenceAt } from "@/components/editor/commentExtension";
+import CommentComposer, { CommentChip } from "@/components/editor/CommentComposer";
 import type { CollabUser } from "@/lib/collab/identity";
 
 interface EditorProps {
@@ -58,6 +63,19 @@ interface EditorProps {
   onOpenElement?: (id: string) => void;
   smartText?: boolean;
   onToggleSmartText?: () => void;
+  /** Proofreading comments; pass only in proofread mode (omit for normal editing). */
+  comments?: EditorComments;
+  /** Shows the Edit / Proofread switch in the toolbar. */
+  proofreading?: boolean;
+  onProofreadingChange?: (on: boolean) => void;
+}
+
+export interface EditorComments {
+  /** True for comments that exist and are open (only those are clickable). */
+  isActive: (commentId: string) => boolean;
+  onClick: (commentId: string) => void;
+  /** Save a comment whose text is already marked. Resolves to an error message or null. */
+  onCreate: (input: { id: string; quote: string; body: string }) => Promise<string | null>;
 }
 
 function ToolbarButton({
@@ -120,6 +138,9 @@ export default function WritingEditor({
   smartText = true,
   onToggleSmartText,
   collab,
+  comments,
+  proofreading = false,
+  onProofreadingChange,
 }: EditorProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const { session, status, error: collabError } = useChapterCollab(collab?.chapterId ?? null);
@@ -128,6 +149,11 @@ export default function WritingEditor({
   const terms = useMemo(() => buildTerms(storyElements), [storyElements]);
   const termsRef = useRef(terms);
   const smartTextRef = useRef(smartText);
+  const commentsRef = useRef(comments);
+  useEffect(() => { commentsRef.current = comments; }, [comments]);
+  const [composer, setComposer] = useState<{ from: number; to: number; quote: string } | null>(null);
+  const [chip, setChip] = useState<number | null>(null);
+  const openComposerRef = useRef<() => void>(() => {});
 
   const editor = useEditor({
   extensions: [
@@ -156,6 +182,13 @@ export default function WritingEditor({
       getTerms: () => termsRef.current,
       isEnabled: () => smartTextRef.current,
       onSuggestionChange: setSuggestion,
+    }),
+    // eslint-disable-next-line react-hooks/refs
+    Comment.configure({
+      onCommentClick: (id) => commentsRef.current?.onClick(id),
+      onRequestComment: () => openComposerRef.current(),
+      isActiveComment: (id) => commentsRef.current?.isActive(id) ?? false,
+      isEnabled: () => !!commentsRef.current,
     }),
   ],
     // With collaboration the content comes from the shared doc (seeded below).
@@ -240,6 +273,59 @@ export default function WritingEditor({
       editor.view.dispatch(editor.state.tr.setMeta(SMART_TEXT_REFRESH, true));
     }
   }, [editor, terms, smartText]);
+
+  // Comment box for the current selection (or the sentence at the cursor).
+  const openComposer = () => {
+    if (!editor || !commentsRef.current) return;
+    if (editor.state.selection.empty) selectSentenceAt(editor.view, editor.state.selection.from);
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    setChip(null);
+    editor.commands.setPendingComment({ from, to });
+    setComposer({ from, to, quote: editor.state.doc.textBetween(from, to, " ").trim() });
+  };
+
+  const closeComposer = (refocus: boolean) => {
+    setComposer(null);
+    if (!editor || editor.isDestroyed) return;
+    editor.commands.setPendingComment(null);
+    if (refocus) editor.commands.focus();
+  };
+  useEffect(() => { openComposerRef.current = openComposer; });
+
+  // Offer a "Comment" button next to a selected passage.
+  useEffect(() => {
+    if (!editor || !comments) return;
+    const update = () => {
+      const { empty, to } = editor.state.selection;
+      setChip(!empty && editor.isFocused ? to : null);
+    };
+    const hide = () => setChip(null);
+    editor.on("selectionUpdate", update);
+    editor.on("focus", update);
+    editor.on("blur", hide);
+    return () => {
+      editor.off("selectionUpdate", update);
+      editor.off("focus", update);
+      editor.off("blur", hide);
+    };
+  }, [editor, comments]);
+
+  const submitComment = async (body: string): Promise<string | null> => {
+    if (!editor || !composer || !commentsRef.current) return "Not ready.";
+    // The highlighted range is remapped through edits made while typing
+    // (including collaborators'); fall back to the original range.
+    const range = getPendingComment(editor) ?? composer;
+    const id = crypto.randomUUID();
+    editor.chain().setTextSelection(range).setComment(id).setTextSelection(range.to).run();
+    const err = await commentsRef.current.onCreate({ id, quote: composer.quote, body });
+    if (err) {
+      editor.commands.unsetComment(id);
+      return err;
+    }
+    closeComposer(false);
+    return null;
+  };
 
   if (collab && (!session || !editor)) {
     return (
@@ -406,6 +492,51 @@ export default function WritingEditor({
 </div>
             
 
+            {onProofreadingChange && (
+              <div
+                role="radiogroup"
+                aria-label="Editing mode"
+                className="flex items-center flex-shrink-0"
+                style={{ marginLeft: "6px", marginRight: "4px", border: "1px solid var(--border-color)" }}>
+                {([
+                  [false, "Edit", PenLine, "Edit mode: write and revise normally"],
+                  [true, "Proofread", SpellCheck, "Proofread mode: double-click a sentence or select a passage to leave a comment"],
+                ] as const).map(([on, label, Icon, title]) => {
+                  const selected = proofreading === on;
+                  return (
+                    <button
+                      key={label}
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={label}
+                      title={title}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (selected) return;
+                        if (composer) closeComposer(false);
+                        setChip(null);
+                        onProofreadingChange(on);
+                      }}
+                      className="flex items-center gap-1 transition-colors"
+                      style={{
+                        padding: "3px 8px", fontSize: "11.5px", fontFamily: "var(--font-inter)", cursor: selected ? "default" : "pointer", border: "none",
+                        background: selected ? "var(--gold-subtle)" : "transparent",
+                        color: selected ? "var(--gold-primary)" : "var(--text-muted)",
+                      }}>
+                      <Icon className="w-3.5 h-3.5" />
+                      <span className="hidden lg:inline">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {comments && (
+              <ToolbarButton onClick={openComposer} title="Add comment (⌘⌥M) — or double-click a sentence">
+                <MessageSquarePlus className="w-3.5 h-3.5" />
+              </ToolbarButton>
+            )}
+
             {onToggleSmartText && (
               <ToolbarButton
                 onClick={onToggleSmartText}
@@ -479,6 +610,18 @@ export default function WritingEditor({
           </div>
         </div>
       </div>
+      {comments && composer && (
+        <CommentComposer
+          editor={editor}
+          pos={composer.to}
+          quote={composer.quote}
+          onSubmit={submitComment}
+          onCancel={() => closeComposer(true)}
+        />
+      )}
+      {comments && !composer && chip !== null && (
+        <CommentChip editor={editor} pos={chip} onClick={openComposer} />
+      )}
       <SmartTextLayer
         suggestion={smartText ? suggestion : null}
         elements={storyElements}
