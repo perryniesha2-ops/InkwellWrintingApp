@@ -21,8 +21,8 @@ const FEATURES = [
   },
   {
     icon: Shield,
-    label: "Consistency Checker",
-    desc: "Scan your manuscript against your Story Bible. Catch contradictions before your readers do.",
+    label: "Plot & Continuity Checker",
+    desc: "Reads your whole manuscript and Story Bible to catch plot holes, continuity slips and timeline errors before your readers do.",
   },
   {
     icon: BookOpen,
@@ -49,7 +49,7 @@ const FEATURES = [
 const INKWELL_HAS = [
   "AI trained on your Story Bible",
   "Chapter-by-chapter proofreader",
-  "Consistency checker vs. your characters",
+  "Plot & continuity checks across the whole book",
   "Readability & prose analysis",
   "Version history with draft compare",
   "Context-aware suggestions",

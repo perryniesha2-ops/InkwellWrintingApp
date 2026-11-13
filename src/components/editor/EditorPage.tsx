@@ -13,7 +13,7 @@ import {
   BookMarked,
   Maximize2,
   Minimize2,
-  ShieldCheck,
+  Route,
   SpellCheck,
   BarChart2,
   ImagePlus,
@@ -43,6 +43,7 @@ import { useComments } from "@/hooks/useComments";
 import type { ChapterComment } from "@/lib/comments";
 import type { EditorComments } from "@/components/editor/WritingEditor";
 import { commentIdsInDoc, focusComment } from "@/components/editor/commentExtension";
+import { focusQuote } from "@/components/editor/findQuote";
 import {
   buildChapterTree, compileManuscript, countWords, flattenChapterTree, moveChapter, splitHtmlIntoChapters,
   type Chapter, type DropPosition,
@@ -62,8 +63,8 @@ const GrammarChecker = dynamic(
   () => import("@/components/editor/GrammarChecker"),
   { ssr: false },
 );
-const ConsistencyChecker = dynamic(
-  () => import("@/components/editor/ConsistencyChecker"),
+const PlotChecker = dynamic(
+  () => import("@/components/editor/PlotChecker"),
   { ssr: false },
 );
 const ReadabilityPanel = dynamic(
@@ -252,10 +253,9 @@ export function EditorPage({ id }: EditorPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [plotCheckOpen, setPlotCheckOpen] = useState(false);
   const [grammarOpen, setGrammarOpen] = useState(false);
   const [readabilityOpen, setReadabilityOpen] = useState(false);
-  const [bibleContext, setBibleContext] = useState("");
 
   const { prefs, updatePrefs, editorStyle } = useEditorPrefs();
 
@@ -376,15 +376,6 @@ const [storyboardOpen, setStoryboardOpen] = useState(false);
     });
   }, [id, userId, router]);
 
-  // Load bible context
-  useEffect(() => {
-    if (!doc?.id) return;
-    fetch(`/api/bible/${doc.id}/context`)
-      .then((r) => r.json())
-      .then((data: { context: string }) => setBibleContext(data.context ?? ""))
-      .catch(() => {});
-    // Refetch when the elements panel closes so AI tools see fresh edits.
-  }, [doc?.id, elementsOpen]);
 
 
 useEffect(() => {
@@ -536,7 +527,7 @@ useEffect(() => {
   useEffect(() => { openCommentIdsRef.current = openCommentIds; }, [openCommentIds]);
 
   const showComment = useCallback((commentId: string | null) => {
-    setConsistencyOpen(false); setGrammarOpen(false); setReadabilityOpen(false); setThesaurusOpen(false);
+    setPlotCheckOpen(false); setGrammarOpen(false); setReadabilityOpen(false); setThesaurusOpen(false);
     setStoryboardOpen(false); setElementsOpen(false); setRevisionsOpen(false); setNotesOpen(false);
     setCommentsOpen(true);
     setActiveCommentId(commentId);
@@ -583,6 +574,45 @@ useEffect(() => {
     }, 150);
     return () => clearInterval(timer);
   }, [pendingCommentFocus, editor]);
+
+  // ── Jump to a passage quoted by the plot & continuity check ──
+  // Which chapter each editor instance shows, so a search never runs against
+  // the previous chapter's editor while the next one is loading.
+  const editorChapters = useRef(new WeakMap<Editor, string>());
+  const [pendingQuote, setPendingQuote] = useState<{ chapterId: string; quote: string } | null>(null);
+  const quoteResolver = useRef<((found: boolean) => void) | null>(null);
+
+  const goToQuote = (chapterId: string, quote: string): Promise<boolean> => {
+    quoteResolver.current?.(false);
+    quoteResolver.current = null;
+    if (!chapters.some((c) => c.id === chapterId)) return Promise.resolve(false);
+    if (view === "write" && editor && !editor.isDestroyed && editorChapters.current.get(editor) === chapterId) {
+      return Promise.resolve(focusQuote(editor, quote));
+    }
+    return new Promise((resolve) => {
+      quoteResolver.current = resolve;
+      selectChapter(chapterId);
+      setView("write");
+      setPendingQuote({ chapterId, quote });
+    });
+  };
+
+  useEffect(() => {
+    if (!pendingQuote || !editor || editorChapters.current.get(editor) !== pendingQuote.chapterId) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (editor.isDestroyed) return;
+      const found = focusQuote(editor, pendingQuote.quote);
+      if (found || tries > 20) {
+        clearInterval(timer);
+        setPendingQuote(null);
+        quoteResolver.current?.(found);
+        quoteResolver.current = null;
+      }
+    }, 150);
+    return () => clearInterval(timer);
+  }, [pendingQuote, editor]);
 
   // Track which comments still have text in the open chapter.
   useEffect(() => {
@@ -778,7 +808,7 @@ useEffect(() => {
 
   const openRightPanel = (
     panel:
-      | "consistency"
+      | "plot"
       | "grammar"
       | "readability"
       | "thesaurus"
@@ -788,7 +818,7 @@ useEffect(() => {
       | "notes"
       | "comments",
   ) => {
-    setConsistencyOpen(panel === "consistency" ? (o) => !o : false);
+    setPlotCheckOpen(panel === "plot" ? (o) => !o : false);
     setGrammarOpen(panel === "grammar" ? (o) => !o : false);
     setReadabilityOpen(panel === "readability" ? (o) => !o : false);
     setThesaurusOpen(panel === "thesaurus" ? (o) => !o : false);
@@ -855,7 +885,7 @@ useEffect(() => {
   
 
   const anyRightPanelOpen =
-    (consistencyOpen ||
+    (plotCheckOpen ||
       readabilityOpen ||
       grammarOpen ||
       thesaurusOpen ||
@@ -1356,7 +1386,10 @@ useEffect(() => {
               content={activeChapter.content}
               onChange={handleContentChange}
               editorStyle={editorStyle}
-              onEditorReady={setEditor}
+              onEditorReady={(e) => {
+                editorChapters.current.set(e, activeChapter.id);
+                setEditor(e);
+              }}
               focusMode={focusMode}
               storyElements={storyElements.elements}
               onOpenElement={openElement}
@@ -1403,12 +1436,12 @@ useEffect(() => {
                   background: "var(--gold-primary)",
                 }}
               />
-              {doc && (
+              {doc && canEditBook && (
                 <ActionButton
-                  icon={ShieldCheck}
-                  label="Consistency Check"
-                  active={consistencyOpen}
-                  onClick={() => openRightPanel("consistency")}
+                  icon={Route}
+                  label="Plot & Continuity Check"
+                  active={plotCheckOpen}
+                  onClick={() => openRightPanel("plot")}
                 />
               )}
               <ActionButton
@@ -1473,12 +1506,15 @@ useEffect(() => {
         </AnimatePresence>
 
         {/* Right panels */}
-        {ConsistencyChecker && (
-          <ConsistencyChecker
-            content={content}
-            bibleContext={bibleContext}
-            isOpen={consistencyOpen}
-            onClose={() => setConsistencyOpen(false)}
+        {doc && canEditBook && (
+          <PlotChecker
+            documentId={doc.id}
+            chapters={chapters}
+            activeChapterId={activeChapterId}
+            flushSave={saveDocument}
+            onGoToQuote={goToQuote}
+            isOpen={plotCheckOpen}
+            onClose={() => setPlotCheckOpen(false)}
           />
         )}
         {GrammarChecker && (

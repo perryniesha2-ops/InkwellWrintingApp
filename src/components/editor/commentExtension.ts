@@ -189,7 +189,7 @@ export function selectSentenceAt(view: EditorView, pos: number): boolean {
   const parent = $pos.parent;
   if (!parent.isTextblock) return false;
   // One character per inline leaf (e.g. hard breaks), so string offsets match positions.
-  const text = parent.textBetween(0, parent.content.size, undefined, "￼");
+  const text = parent.textBetween(0, parent.content.size, undefined, "\ufffc");
   const range = sentenceAt(text, $pos.parentOffset);
   if (!range) return false;
   const start = $pos.start();
