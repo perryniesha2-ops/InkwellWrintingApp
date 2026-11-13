@@ -1528,7 +1528,10 @@ useEffect(() => {
         )}
         {ReadabilityPanel && (
           <ReadabilityPanel
-            content={content}
+            chapters={chapters}
+            activeChapterId={activeChapterId}
+            onGoToQuote={goToQuote}
+            onOpenChapter={(chapterId) => { selectChapter(chapterId); setView("write"); }}
             isOpen={readabilityOpen}
             onClose={() => setReadabilityOpen(false)}
           />
