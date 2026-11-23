@@ -1,408 +1,356 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  BookCheck, X, Loader2, CheckCircle2, AlertCircle,
-  AlertTriangle, Info, ChevronDown, ChevronUp, MapPin,
-} from "lucide-react";
+import { BookCheck, Check, CheckCheck, Loader2, RotateCcw, X } from "lucide-react";
 import type { Editor } from "@tiptap/react";
-
-interface ProofreadIssue {
-  type: "missing_word" | "run_on" | "choppy" | "awkward" | "repetition" | "pronoun" | "tense" | "punctuation" | "spacing";
-  severity: "error" | "warning" | "suggestion";
-  quote: string;
-  explanation: string;
-  suggestion: string;
-  impact: string;
-}
-
-interface ProofreadResult {
-  issues: ProofreadIssue[];
-  summary: string;
-  score: number;
-  strengths: string[];
-}
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
+import {
+  PROOF_CATEGORIES, editFor, editKey,
+  type Edit, type ProofCategory, type ProofParagraph, type RawSuggestion,
+} from "@/lib/proofread";
 
 interface GrammarCheckerProps {
-  content: string;
+  documentId: string;
+  chapterId: string | null;
+  chapterTitle: string;
   genre?: string;
+  /** The editor showing `chapterId`. */
   editor: Editor | null;
   isOpen: boolean;
   onClose: () => void;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  missing_word: { label: "Missing Word",    color: "#ef4444", bg: "rgba(239,68,68,0.1)" },
-  run_on:       { label: "Run-on",          color: "#f97316", bg: "rgba(249,115,22,0.1)" },
-  choppy:       { label: "Choppy",          color: "#eab308", bg: "rgba(234,179,8,0.1)" },
-  awkward:      { label: "Awkward",         color: "#8b5cf6", bg: "rgba(139,92,246,0.1)" },
-  repetition:   { label: "Repetition",      color: "#d97706", bg: "rgba(217,119,6,0.1)" },
-  pronoun:      { label: "Unclear Pronoun", color: "#06b6d4", bg: "rgba(6,182,212,0.1)" },
-  tense:        { label: "Tense",           color: "#ec4899", bg: "rgba(236,72,153,0.1)" },
-  punctuation:  { label: "Punctuation",     color: "#6b7280", bg: "rgba(107,114,128,0.1)" },
-  spacing:      { label: "Spacing",         color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
+/** Target section size sent per request; sections run in parallel. */
+const SECTION_CHARS = 6000;
+const PARALLEL = 4;
+const PREVIEW_CHARS = 28;
+
+interface Suggestion extends RawSuggestion {
+  id: string;
+  key: string;
+  /** For display: text around the change, the removed text and the inserted text. */
+  pre: string;
+  del: string;
+  ins: string;
+  post: string;
+  /** The text has changed since the check, so the fix can't be applied. */
+  stale?: boolean;
+}
+
+interface ChapterRun {
+  status: "running" | "done";
+  total: number;
+  finished: number;
+  failed: number;
+  error?: string;
+  suggestions: Suggestion[];
+}
+
+const font = { fontFamily: "var(--font-inter)" } as const;
+const iconButton: React.CSSProperties = {
+  color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px",
 };
+const CATEGORY = Object.fromEntries(PROOF_CATEGORIES.map((c) => [c.key, c])) as Record<ProofCategory, (typeof PROOF_CATEGORIES)[number]>;
 
-const SCAN_CATEGORIES = [
-  { id: "missing_word", label: "Missing Words",        icon: "🔍", description: "Words accidentally dropped from sentences" },
-  { id: "repetition",   label: "Word Repetition",      icon: "🔄", description: "Same word used multiple times close together" },
-  { id: "awkward",      label: "Awkward Phrasing",     icon: "✏️", description: "Sentences that sound unnatural or unclear" },
-  { id: "punctuation",  label: "Punctuation",          icon: "，", description: "Missing or incorrect punctuation marks" },
-  { id: "tense",        label: "Tense Consistency",    icon: "⏱️", description: "Unintentional switches between past and present" },
-  { id: "pronoun",      label: "Unclear Pronouns",     icon: "👤", description: "He/she/they that could refer to multiple people" },
-  { id: "spacing",      label: "Spacing & Formatting", icon: "⎵",  description: "Double spaces, spacing around punctuation" },
-] as const;
+// ── Reading and editing the document ───────────────────
 
-type CategoryId = typeof SCAN_CATEGORIES[number]["id"];
+interface Block { n: number; pos: number; text: string }
 
-// ── Helpers ────────────────────────────────────────────
-
-function splitIntoChunks(text: string, maxChars: number): string[] {
-  if (text.length <= maxChars) return [text];
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= maxChars) { chunks.push(remaining); break; }
-    let breakPoint = maxChars;
-    const sentenceEnd = remaining.lastIndexOf(". ", maxChars);
-    const questionEnd = remaining.lastIndexOf("? ", maxChars);
-    const exclamEnd   = remaining.lastIndexOf("! ", maxChars);
-    const bestBreak   = Math.max(sentenceEnd, questionEnd, exclamEnd);
-    if (bestBreak > maxChars * 0.6) breakPoint = bestBreak + 2;
-    chunks.push(remaining.slice(0, breakPoint).trim());
-    remaining = remaining.slice(breakPoint).trim();
-  }
-  return chunks.filter(Boolean);
-}
-
-function getCurrentChapter(editor: Editor | null, content: string): { text: string; title: string } {
-  const chapters: { title: string; pos: number }[] = [];
-  if (editor && !editor.isDestroyed) {
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === "heading" && node.attrs.level === 1) {
-        chapters.push({ title: node.textContent, pos });
-      }
-    });
-  }
-
-  if (chapters.length === 0) {
-    const plain = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    return { text: plain.slice(0, 6000), title: "Document" };
-  }
-
-  let currentChapterIndex = 0;
-  if (editor && !editor.isDestroyed) {
-    const cursorPos = editor.state.selection.from;
-    for (let i = chapters.length - 1; i >= 0; i--) {
-      if (cursorPos >= chapters[i].pos) { currentChapterIndex = i; break; }
-    }
-  }
-
-  const currentChapter = chapters[currentChapterIndex];
-  const div = document.createElement("div");
-  div.innerHTML = content;
-  const allHeadings = Array.from(div.querySelectorAll("h1"));
-  const currentHeading = allHeadings[currentChapterIndex];
-  const nextHeading = allHeadings[currentChapterIndex + 1];
-
-  if (!currentHeading) {
-    const plain = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    return { text: plain.slice(0, 6000), title: "Document" };
-  }
-
-  let chapterText = "";
-  let node = currentHeading.nextSibling;
-  while (node && node !== nextHeading) {
-    const el = node as HTMLElement;
-    const text = (el.textContent ?? el.nodeValue ?? "").trim();
-    if (text) chapterText += text + " ";
-    node = node.nextSibling;
-  }
-
-  return {
-    text: chapterText.replace(/\s+/g, " ").trim().slice(0, 6000),
-    title: currentChapter.title,
-  };
-}
-
-function navigateToQuote(editor: Editor | null, quote: string) {
-  if (!editor || !quote) return;
-
-  const searchText = quote
-    .replace(/^["'"']|["'"']$/g, "")
-    .trim()
-    .slice(0, 60);
-
-  if (!searchText) return;
-
-  let foundPos: number | null = null;
-  let foundLength = 0;
-
-  editor.state.doc.descendants((node, pos) => {
-    if (foundPos !== null) return false;
-    if (!node.isText || !node.text) return;
-    const index = node.text.toLowerCase().indexOf(searchText.toLowerCase());
-    if (index !== -1) {
-      foundPos = pos + index;
-      foundLength = searchText.length;
-      return false;
-    }
+/** Every text block (paragraph, heading, list item) with its index and position. */
+function readBlocks(doc: PMNode): Block[] {
+  const blocks: Block[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    // One character per inline leaf (hard breaks), so offsets match positions.
+    blocks.push({ n: blocks.length, pos, text: node.textBetween(0, node.content.size, undefined, "\n") });
+    return false;
   });
+  return blocks;
+}
 
-  if (foundPos === null) return;
+/**
+ * Where a suggestion applies in the document now: wherever the same edit has
+ * the same surrounding text (paragraphs may have been added above it), or in
+ * its own paragraph if a nearby fix changed the surroundings. Null when the
+ * text it was about has changed.
+ */
+function findIn(blocks: Block[], s: Suggestion): { block: Block; edit: Edit } | null {
+  let fallback: { block: Block; edit: Edit } | null = null;
+  for (const block of blocks) {
+    const edit = editFor(block.text, s.original, s.replacement);
+    if (!edit || block.text.slice(edit.from, edit.to) !== s.del || edit.insert !== s.ins) continue;
+    if (editKey(block.text, edit) === s.key) return { block, edit };
+    if (block.n === s.paragraph) fallback = { block, edit };
+  }
+  return fallback;
+}
+const findInDoc = (doc: PMNode, s: Suggestion) => findIn(readBlocks(doc), s);
 
-  try {
-    editor.chain().focus().setTextSelection({ from: foundPos, to: foundPos + foundLength }).run();
-  } catch { return; }
+function applyEdit(tr: Transaction, block: Block, edit: Edit) {
+  const from = block.pos + 1 + edit.from;
+  const to = block.pos + 1 + edit.to;
+  if (edit.insert) tr.insertText(edit.insert, from, to);
+  else tr.delete(from, to);
+}
 
-  setTimeout(() => {
-    const container = document.getElementById("editor-scroll-container");
-    if (!container) return;
-    try {
-      const { node } = editor.view.domAtPos(foundPos! + 1);
-      const el = (node.nodeType === 1 ? node : (node as HTMLElement).parentElement) as HTMLElement | null;
-      if (el) {
-        const containerRect = container.getBoundingClientRect();
-        const targetRect = el.getBoundingClientRect();
-        const scrollTop = container.scrollTop + (targetRect.top - containerRect.top) - 120;
-        container.scrollTo({ top: scrollTop, behavior: "smooth" });
-      }
-    } catch {
-      try {
-        const domPos = editor.view.domAtPos(foundPos! + 1);
-        (domPos.node as HTMLElement)?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      } catch { /* ignore */ }
+/** Split paragraphs into sections of about SECTION_CHARS. */
+function sectionsOf(paragraphs: ProofParagraph[]): ProofParagraph[][] {
+  const sections: ProofParagraph[][] = [];
+  let current: ProofParagraph[] = [];
+  let size = 0;
+  for (const p of paragraphs) {
+    if (current.length && size + p.text.length > SECTION_CHARS) {
+      sections.push(current);
+      current = [];
+      size = 0;
     }
-  }, 100);
+    current.push(p);
+    size += p.text.length;
+  }
+  if (current.length) sections.push(current);
+  return sections;
 }
 
-function SeverityIcon({ severity }: { severity: string }) {
-  if (severity === "error")   return <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />;
-  if (severity === "warning") return <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />;
-  return <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />;
+/** Text around an edit for the card, trimmed to whole words; "…" marks a cut. */
+function preview(text: string, edit: Edit) {
+  const start = Math.max(0, edit.from - PREVIEW_CHARS);
+  const end = Math.min(text.length, edit.to + PREVIEW_CHARS);
+  const pre = start > 0 ? "…" + text.slice(start, edit.from).replace(/^\S*\s/, "") : text.slice(0, edit.from);
+  const post = end < text.length ? text.slice(edit.to, end).replace(/\s\S*$/, "") + "…" : text.slice(edit.to);
+  return { pre, del: text.slice(edit.from, edit.to), ins: edit.insert, post };
 }
 
-function IssueCard({ issue, editor }: { issue: ProofreadIssue; editor: Editor | null }) {
-  const [expanded, setExpanded] = useState(false);
-  const config = TYPE_CONFIG[issue.type] ?? TYPE_CONFIG.punctuation;
+const visibleSpace = (s: string) => (s && !s.trim() ? s.replace(/ /g, "·").replace(/\n/g, "↵") : s);
 
+// ── Suggestion card ────────────────────────────────────
+
+function SuggestionCard({ s, onAccept, onReject, onShow }: {
+  s: Suggestion;
+  onAccept: () => void;
+  onReject: () => void;
+  onShow: () => void;
+}) {
+  const cat = CATEGORY[s.category] ?? CATEGORY.grammar;
   return (
-    <div className="overflow-hidden mb-2" style={{ border: "1px solid var(--border-color)", background: "var(--bg-elevated)" }}>
-      <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-        <SeverityIcon severity={issue.severity} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-            <span style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, padding: "2px 6px", background: config.bg, color: config.color, letterSpacing: "0.04em" }}>
-              {config.label}
-            </span>
-          </div>
-          <p style={{ fontSize: "12px", fontFamily: "var(--font-inter)", color: "var(--text-primary)" }}>
-            {issue.explanation}
-          </p>
-          {issue.quote && !expanded && (
-            <p style={{ fontSize: "12px", fontFamily: "var(--font-cormorant)", fontStyle: "italic", marginTop: "2px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              &quot;{issue.quote.slice(0, 60)}{issue.quote.length > 60 ? "…" : ""}&quot;
-            </p>
-          )}
-        </div>
-        {expanded
-          ? <ChevronUp style={{ width: "13px", height: "13px", color: "var(--text-muted)", flexShrink: 0 }} />
-          : <ChevronDown style={{ width: "13px", height: "13px", color: "var(--text-muted)", flexShrink: 0 }} />}
-      </div>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} style={{ overflow: "hidden" }}>
-            <div style={{ padding: "0 12px 12px", borderTop: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "8px" }}>
-              {issue.quote && (
-                <div style={{ paddingTop: "10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                    <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", margin: 0 }}>In your text</p>
-                    <button
-                      onClick={() => navigateToQuote(editor, issue.quote)}
-                      style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontFamily: "var(--font-inter)", padding: "2px 8px", background: "var(--gold-subtle)", color: "var(--gold-primary)", border: "none", cursor: "pointer" }}>
-                      <MapPin style={{ width: "10px", height: "10px" }} />
-                      Go to
-                    </button>
-                  </div>
-                  <p style={{ fontFamily: "var(--font-cormorant)", fontSize: "13px", fontStyle: "italic", padding: "8px 10px", background: "var(--bg-surface)", borderLeft: "2px solid var(--gold-primary)", color: "var(--text-primary)", margin: 0 }}>
-                    &quot;{issue.quote}&quot;
-                  </p>
-                </div>
-              )}
-              {issue.suggestion && (
-                <div>
-                  <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "4px" }}>Suggestion</p>
-                  <p style={{ fontFamily: "var(--font-cormorant)", fontSize: "13px", fontStyle: "italic", padding: "8px 10px", background: "rgba(34,197,94,0.08)", borderLeft: "2px solid #22c55e", color: "var(--text-primary)", margin: 0 }}>
-                    {issue.suggestion}
-                  </p>
-                </div>
-              )}
-              {issue.impact && (
-                <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", fontStyle: "italic", color: "var(--text-muted)", margin: 0 }}>
-                  💡 {issue.impact}
-                </p>
-              )}
-            </div>
-          </motion.div>
+    <div style={{ marginBottom: "8px", border: "1px solid var(--border-color)", background: "var(--bg-elevated)", opacity: s.stale ? 0.6 : 1 }}>
+      <button onClick={onShow} disabled={s.stale} title={s.stale ? undefined : "Show in the editor"}
+        style={{ ...font, display: "block", width: "100%", textAlign: "left", padding: "10px 10px 6px", background: "none", border: "none", cursor: s.stale ? "default" : "pointer" }}>
+        <span style={{ display: "inline-block", fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", padding: "2px 6px", color: cat.color, background: `${cat.color}1a`, marginBottom: "6px" }}>
+          {cat.label}
+        </span>
+        <span style={{ display: "block", fontFamily: "var(--font-cormorant), Georgia, serif", fontSize: "14px", lineHeight: 1.55, color: "var(--text-secondary)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+          {s.pre}
+          {s.del && <del style={{ color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>{visibleSpace(s.del)}</del>}
+          {s.ins && <ins style={{ color: "#16a34a", background: "rgba(34,197,94,0.15)", textDecoration: "none", fontWeight: 600 }}>{visibleSpace(s.ins)}</ins>}
+          {s.post}
+        </span>
+        <span style={{ display: "block", marginTop: "4px", fontSize: "11.5px", lineHeight: 1.5, color: "var(--text-muted)" }}>
+          {s.stale ? "This text has changed since the check." : s.explanation}
+        </span>
+      </button>
+      <div style={{ display: "flex", gap: "6px", padding: "0 10px 10px" }}>
+        {!s.stale && (
+          <button onClick={onAccept}
+            style={{ ...font, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", padding: "5px 8px", fontSize: "12px", fontWeight: 600, cursor: "pointer", border: "1px solid rgba(34,197,94,0.5)", background: "rgba(34,197,94,0.1)", color: "#16a34a" }}>
+            <Check style={{ width: "12px", height: "12px" }} /> Accept
+          </button>
         )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function ScoreDisplay({ score, strengths }: { score: number; strengths: string[] }) {
-  const color = score >= 85 ? "#22c55e" : score >= 70 ? "#f59e0b" : "#ef4444";
-  const label = score >= 85 ? "Strong prose" : score >= 70 ? "Good with some issues" : "Needs attention";
-  return (
-    <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-color)", padding: "16px", marginBottom: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "12px" }}>
-        <div style={{ width: "56px", height: "56px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: `2px solid ${color}`, background: `${color}15` }}>
-          <span style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "20px", color }}>{score}</span>
-        </div>
-        <div>
-          <p style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", margin: "0 0 2px" }}>{label}</p>
-          <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", margin: 0 }}>Prose quality score</p>
-        </div>
+        <button onClick={onReject} title={s.stale ? "Remove" : "Reject and don't suggest this again"}
+          style={{ ...font, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "4px", padding: "5px 8px", fontSize: "12px", cursor: "pointer", border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-muted)" }}>
+          <X style={{ width: "12px", height: "12px" }} /> {s.stale ? "Remove" : "Reject"}
+        </button>
       </div>
-      {strengths.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          {strengths.map((s, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-              <span style={{ color: "#22c55e", fontSize: "12px", marginTop: "1px" }}>✓</span>
-              <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-primary)", margin: 0 }}>{s}</p>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Main component ──────────────────────────────────────
+// ── Panel ──────────────────────────────────────────────
 
-export default function GrammarChecker({ content, genre, editor, isOpen, onClose }: GrammarCheckerProps) {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ProofreadResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"all" | "errors" | "warnings" | "suggestions">("all");
-  const [currentChapterTitle, setCurrentChapterTitle] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [hasRun, setHasRun] = useState(false);
-  const [mode, setMode] = useState<"chapter" | "selection">("chapter");
-  const [selectionText, setSelectionText] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<Set<CategoryId>>(
-    new Set(["missing_word", "repetition", "awkward", "punctuation", "tense"])
-  );
+export default function GrammarChecker({
+  documentId, chapterId, chapterTitle, genre, editor, isOpen, onClose,
+}: GrammarCheckerProps) {
+  // Results are kept per chapter, so switching chapters and back keeps them.
+  const [runs, setRuns] = useState<Record<string, ChapterRun>>({});
+  const [ignored, setIgnored] = useState<Record<string, Set<string>>>({});
+  const [filter, setFilter] = useState<ProofCategory | "all">("all");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [wordCount, setWordCount] = useState(0);
 
-  // Detect selected text
+  const liveEditor = editor && !editor.isDestroyed ? editor : null;
+  const run = chapterId ? runs[chapterId] : undefined;
+  const ignoredHere = chapterId ? ignored[chapterId] : undefined;
+
+  const updateRun = useCallback((id: string, update: (r: ChapterRun) => ChapterRun) => {
+    setRuns((prev) => (prev[id] ? { ...prev, [id]: update(prev[id]) } : prev));
+  }, []);
+
+  // Word count for the button, and stale-marking when the text changes after a check.
   useEffect(() => {
-    if (!editor || !isOpen) return;
-    const updateSelection = () => {
-      const { from, to } = editor.state.selection;
-      if (from === to) { setSelectionText(""); return; }
-      const text = editor.state.doc.textBetween(from, to, " ").trim();
-      if (text.length > 50) {
-        setSelectionText(text);
-        setMode("selection");
-      } else {
-        setSelectionText("");
-        setMode("chapter");
-      }
+    if (!liveEditor || !isOpen || !chapterId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (liveEditor.isDestroyed) return;
+        setWordCount(liveEditor.state.doc.textBetween(0, liveEditor.state.doc.content.size, " ", " ").split(/\s+/).filter(Boolean).length);
+        const blocks = readBlocks(liveEditor.state.doc);
+        updateRun(chapterId, (r) => {
+          let changed = false;
+          const suggestions = r.suggestions.map((s) => {
+            const stale = !findIn(blocks, s);
+            if (stale !== !!s.stale) changed = true;
+            return stale === !!s.stale ? s : { ...s, stale };
+          });
+          return changed ? { ...r, suggestions } : r;
+        });
+      }, 400);
     };
-    editor.on("selectionUpdate", updateSelection);
-    updateSelection();
-    return () => { editor.off("selectionUpdate", updateSelection); };
-  }, [editor, isOpen]);
+    refresh();
+    liveEditor.on("update", refresh);
+    return () => { clearTimeout(timer); liveEditor.off("update", refresh); };
+  }, [liveEditor, isOpen, chapterId, updateRun]);
 
-  const toggleCategory = (id: CategoryId) => {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) { if (next.size === 1) return prev; next.delete(id); }
-      else next.add(id);
-      return next;
-    });
+  const loadIgnored = async (id: string): Promise<Set<string>> => {
+    const res = await fetch(`/api/documents/${documentId}/proofread/ignores?chapterId=${id}`);
+    const keys = res.ok ? new Set(((await res.json()) as { keys: string[] }).keys) : new Set<string>();
+    setIgnored((prev) => ({ ...prev, [id]: keys }));
+    return keys;
   };
 
-  const runCheck = async () => {
-    setLoading(true);
-    setResult(null);
-    setError(null);
-    setProgress(0);
-    setHasRun(true);
-
-    let textToCheck: string;
-    let titleToUse: string;
-
-    if (mode === "selection" && selectionText) {
-      textToCheck = selectionText;
-      titleToUse = "Selected Text";
-      setCurrentChapterTitle("Selected Text");
-    } else {
-      const { text: chapterText, title: chapterTitle } = getCurrentChapter(editor, content);
-      textToCheck = chapterText;
-      titleToUse = chapterTitle;
-      setCurrentChapterTitle(chapterTitle);
+  const start = async () => {
+    if (!liveEditor || !chapterId) return;
+    const id = chapterId;
+    setNotice(null);
+    setFilter("all");
+    // Snapshot the text now: results are matched against it even if the author
+    // keeps typing or switches chapters while the check runs.
+    const blocks = readBlocks(liveEditor.state.doc).filter((b) => b.text.trim());
+    const snapshot = new Map(blocks.map((b) => [b.n, b.text]));
+    const sections = sectionsOf(blocks.map(({ n, text }) => ({ n, text })));
+    if (!sections.length) {
+      setNotice("This chapter has no text yet.");
+      return;
     }
+    setRuns((prev) => ({ ...prev, [id]: { status: "running", total: sections.length, finished: 0, failed: 0, suggestions: [] } }));
+    const ignoredKeys = await loadIgnored(id).catch(() => new Set<string>());
+    const seen = new Set<string>();
+    let counter = 0;
 
-    try {
-      const chunks = splitIntoChunks(textToCheck, 2500);
-      const allIssues: ProofreadIssue[] = [];
-      let totalScore = 0;
-      let combinedSummary = "";
-      const allStrengths: string[] = [];
+    const toSuggestion = (raw: RawSuggestion): Suggestion | null => {
+      const text = snapshot.get(raw.paragraph);
+      const edit = text !== undefined ? editFor(text, raw.original, raw.replacement) : null;
+      if (!text || !edit) return null;
+      const key = editKey(text, edit);
+      if (ignoredKeys.has(key) || seen.has(key)) return null;
+      seen.add(key);
+      counter += 1;
+      return {
+        ...raw,
+        id: `${id}-${counter}`,
+        key,
+        ...preview(text, edit),
+      };
+    };
 
-      for (let i = 0; i < chunks.length; i++) {
-        setProgress(Math.round((i / chunks.length) * 100));
-
-        const response = await fetch("/api/grammar-check", {
+    const checkSection = async (paragraphs: ProofParagraph[]) => {
+      try {
+        const res = await fetch(`/api/documents/${documentId}/proofread`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: chunks[i],
-            genre,
-            chapterTitle: chunks.length > 1
-              ? `${titleToUse} (Part ${i + 1} of ${chunks.length})`
-              : titleToUse,
-            categories: Array.from(selectedCategories),
-          }),
+          body: JSON.stringify({ chapterId: id, chapterTitle, genre: genre ?? null, paragraphs }),
         });
-
-        if (!response.ok) continue;
-        const data = await response.json() as ProofreadResult;
-        allIssues.push(...(data.issues ?? []));
-        totalScore += data.score ?? 100;
-        if (i === 0) combinedSummary = data.summary ?? "";
-        allStrengths.push(...(data.strengths ?? []));
+        const body = (await res.json().catch(() => ({}))) as { suggestions?: RawSuggestion[]; error?: string };
+        if (!res.ok) throw new Error(body.error ?? "Couldn't check this section.");
+        const found = (body.suggestions ?? []).map(toSuggestion).filter((s): s is Suggestion => s !== null);
+        updateRun(id, (r) => ({
+          ...r,
+          finished: r.finished + 1,
+          // Keep suggestions in reading order.
+          suggestions: [...r.suggestions, ...found].sort((a, b) => a.paragraph - b.paragraph),
+        }));
+      } catch (err) {
+        updateRun(id, (r) => ({ ...r, finished: r.finished + 1, failed: r.failed + 1, error: (err as Error).message }));
       }
+    };
 
-      setProgress(100);
-      setResult({
-        issues: allIssues,
-        summary: combinedSummary,
-        score: Math.round(totalScore / Math.max(chunks.length, 1)),
-        strengths: [...new Set(allStrengths)].slice(0, 3),
-      });
-    } catch (err) {
-      console.error("Proofread error:", err);
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-      setProgress(0);
+    const queue = [...sections];
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) await checkSection(next);
+    }));
+    updateRun(id, (r) => ({ ...r, status: "done" }));
+  };
+
+  const remove = (ids: Set<string>) => {
+    if (!chapterId) return;
+    updateRun(chapterId, (r) => ({ ...r, suggestions: r.suggestions.filter((s) => !ids.has(s.id)) }));
+  };
+
+  const accept = (targets: Suggestion[]) => {
+    if (!liveEditor || !chapterId) return;
+    const applied = new Set<string>();
+    const stale = new Set<string>();
+    // One transaction, so a single undo reverts an "Accept all".
+    liveEditor.chain().command(({ tr }) => {
+      for (const s of targets) {
+        const found = findInDoc(tr.doc, s);
+        if (!found) { stale.add(s.id); continue; }
+        applyEdit(tr, found.block, found.edit);
+        applied.add(s.id);
+      }
+      return applied.size > 0;
+    }).run();
+    updateRun(chapterId, (r) => ({
+      ...r,
+      suggestions: r.suggestions
+        .filter((s) => !applied.has(s.id))
+        .map((s) => (stale.has(s.id) ? { ...s, stale: true } : s)),
+    }));
+  };
+
+  const reject = async (s: Suggestion) => {
+    if (!chapterId) return;
+    remove(new Set([s.id]));
+    if (s.stale) return;
+    setIgnored((prev) => ({ ...prev, [chapterId]: new Set([...(prev[chapterId] ?? []), s.key]) }));
+    const res = await fetch(`/api/documents/${documentId}/proofread/ignores`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapterId, key: s.key, original: s.original, replacement: s.replacement }),
+    }).catch(() => null);
+    if (!res?.ok) setNotice("Couldn't save that rejection, so it may be suggested again.");
+  };
+
+  const resetIgnored = async () => {
+    if (!chapterId) return;
+    const res = await fetch(`/api/documents/${documentId}/proofread/ignores?chapterId=${chapterId}`, { method: "DELETE" });
+    if (res.ok) {
+      setIgnored((prev) => ({ ...prev, [chapterId]: new Set() }));
+      setNotice("Rejected suggestions can come back on the next check.");
     }
   };
 
-  const allIssues  = result?.issues ?? [];
-  const filtered   = allIssues.filter((i) => {
-    if (activeTab === "all")         return true;
-    if (activeTab === "errors")      return i.severity === "error";
-    if (activeTab === "warnings")    return i.severity === "warning";
-    return i.severity === "suggestion";
-  });
-  const errorCount  = allIssues.filter((i) => i.severity === "error").length;
-  const warningCount = allIssues.filter((i) => i.severity === "warning").length;
-  const suggCount   = allIssues.filter((i) => i.severity === "suggestion").length;
+  const show = (s: Suggestion) => {
+    if (!liveEditor) return;
+    const found = findInDoc(liveEditor.state.doc, s);
+    if (!found) return;
+    const from = found.block.pos + 1 + found.edit.from;
+    const to = found.block.pos + 1 + Math.max(found.edit.to, found.edit.from);
+    liveEditor.chain().focus().setTextSelection({ from, to }).scrollIntoView().run();
+    const dom = liveEditor.view.domAtPos(from).node;
+    (dom instanceof HTMLElement ? dom : dom.parentElement)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  const suggestions = useMemo(() => run?.suggestions ?? [], [run]);
+  const counts = useMemo(() => {
+    const c: Partial<Record<ProofCategory, number>> = {};
+    suggestions.forEach((s) => { c[s.category] = (c[s.category] ?? 0) + 1; });
+    return c;
+  }, [suggestions]);
+  const visible = suggestions.filter((s) => filter === "all" || s.category === filter);
+  const acceptable = visible.filter((s) => !s.stale);
+  const running = run?.status === "running";
 
   return (
     <AnimatePresence>
@@ -413,265 +361,105 @@ export default function GrammarChecker({ content, genre, editor, isOpen, onClose
           exit={{ opacity: 0, x: 320 }}
           transition={{ type: "spring", damping: 28, stiffness: 280 }}
           style={{
-            position: "fixed", right: 0, top: "48px", bottom: 0,
-            width: "320px", display: "flex", flexDirection: "column",
-            zIndex: 40, background: "var(--bg-surface)",
-            borderLeft: "1px solid var(--border-color)",
+            position: "fixed", right: 0, top: "48px", bottom: 0, width: "320px",
+            display: "flex", flexDirection: "column", zIndex: 40,
+            background: "var(--bg-surface)", borderLeft: "1px solid var(--border-color)",
           }}>
-
           {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: "48px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <BookCheck style={{ width: "14px", height: "14px", color: "var(--gold-primary)" }} />
-              <div>
-                <span style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "13px", color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
-                  Proofreader
-                </span>
-                {currentChapterTitle && (
-                  <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", margin: 0 }}>
-                    {currentChapterTitle}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px 0 16px", height: "48px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+              <BookCheck style={{ width: "14px", height: "14px", color: "var(--gold-primary)", flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>Proofreader</span>
+                {chapterId && (
+                  <p style={{ ...font, fontSize: "10px", color: "var(--text-muted)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {chapterTitle || "Untitled"}
                   </p>
                 )}
               </div>
             </div>
-            <button onClick={onClose}
-              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", padding: "4px" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}>
-              <X style={{ width: "14px", height: "14px" }} />
-            </button>
+            <button onClick={onClose} style={iconButton} title="Close"><X style={{ width: "14px", height: "14px" }} /></button>
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-
-            {/* Category selector + mode */}
-            {!hasRun && !loading && (
-              <div>
-                {/* Mode toggle */}
-                <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "8px" }}>
-                  Proofread
-                </p>
-                <div style={{ display: "flex", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", padding: "3px", gap: "2px", marginBottom: "12px" }}>
-                  <button
-                    onClick={() => setMode("chapter")}
-                    style={{
-                      flex: 1, padding: "6px 8px",
-                      fontSize: "11px", fontFamily: "var(--font-inter)", fontWeight: 600,
-                      border: "none", cursor: "pointer", transition: "all 0.15s",
-                      background: mode === "chapter" ? "var(--gold-primary)" : "transparent",
-                      color: mode === "chapter" ? "var(--bg-primary)" : "var(--text-muted)",
-                    }}>
-                    Current Chapter
-                  </button>
-                  <button
-                    onClick={() => { if (selectionText) setMode("selection"); }}
-                    disabled={!selectionText}
-                    style={{
-                      flex: 1, padding: "6px 8px",
-                      fontSize: "11px", fontFamily: "var(--font-inter)", fontWeight: 600,
-                      border: "none", cursor: selectionText ? "pointer" : "not-allowed",
-                      transition: "all 0.15s",
-                      background: mode === "selection" ? "var(--gold-primary)" : "transparent",
-                      color: mode === "selection" ? "var(--bg-primary)" : selectionText ? "var(--text-muted)" : "var(--text-dim)",
-                      opacity: selectionText ? 1 : 0.5,
-                    }}>
-                    Selection {selectionText ? `(${selectionText.split(/\s+/).filter(Boolean).length}w)` : ""}
-                  </button>
-                </div>
-
-                {/* Selection preview */}
-                {mode === "selection" && selectionText && (
-                  <div style={{ padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", borderLeft: "2px solid var(--gold-primary)", marginBottom: "12px" }}>
-                    <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "4px" }}>
-                      Selected text
-                    </p>
-                    <p style={{ fontSize: "12px", fontFamily: "var(--font-cormorant)", fontStyle: "italic", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
-                      &quot;{selectionText.slice(0, 150)}{selectionText.length > 150 ? "…" : ""}&quot;
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+            {!liveEditor || !chapterId ? (
+              <p style={{ ...font, fontSize: "12px", color: "var(--text-dim)", lineHeight: 1.6 }}>Open a chapter in the editor to proofread it.</p>
+            ) : (
+              <>
+                {/* Run */}
+                {!run && (
+                  <p style={{ ...font, fontSize: "12px", lineHeight: 1.65, color: "var(--text-muted)", margin: "0 0 12px" }}>
+                    Reads the whole chapter for grammar, spelling, punctuation, spacing, missing words and repeated words.
+                    Accept a fix to make the change, or reject it and it won&apos;t be suggested again.
+                  </p>
+                )}
+                <button onClick={() => void start()} disabled={running} className="btn-gold"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", width: "100%", padding: "8px 12px", fontSize: "12.5px", cursor: running ? "default" : "pointer", opacity: running ? 0.7 : 1 }}>
+                  {running ? <Loader2 className="animate-spin" style={{ width: "13px", height: "13px" }} /> : <BookCheck style={{ width: "13px", height: "13px" }} />}
+                  {running ? "Proofreading…" : run ? "Check again" : `Proofread chapter${wordCount ? ` (${wordCount.toLocaleString()} words)` : ""}`}
+                </button>
+                {run && running && (
+                  <div style={{ marginTop: "10px" }}>
+                    <div style={{ height: "3px", background: "var(--border-color)" }}>
+                      <motion.div animate={{ width: `${Math.max(6, (run.finished / run.total) * 100)}%` }} style={{ height: "100%", background: "var(--gold-primary)" }} />
+                    </div>
+                    <p style={{ ...font, fontSize: "11px", color: "var(--text-dim)", margin: "4px 0 0" }}>
+                      Checked {run.finished} of {run.total} {run.total === 1 ? "section" : "sections"}. Suggestions appear as each one finishes.
                     </p>
                   </div>
                 )}
-
-                {mode === "selection" && !selectionText && (
-                  <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", fontStyle: "italic", color: "var(--text-dim)", marginBottom: "12px" }}>
-                    Select text in the editor to proofread a specific passage.
+                {run?.failed ? (
+                  <p style={{ ...font, fontSize: "11.5px", color: "#ef4444", margin: "8px 0 0" }}>
+                    {run.failed} of {run.total} {run.total === 1 ? "section" : "sections"} couldn&apos;t be checked: {run.error}
                   </p>
-                )}
+                ) : null}
+                {notice && <p style={{ ...font, fontSize: "11.5px", color: "var(--text-muted)", margin: "8px 0 0" }}>{notice}</p>}
 
-                {mode === "chapter" && editor && (
-                  <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", marginBottom: "12px" }}>
-                    Chapter: <span style={{ color: "var(--gold-primary)", fontWeight: 500 }}>
-                      {getCurrentChapter(editor, content).title}
-                    </span>
-                  </p>
-                )}
-
-                {/* Category selector */}
-                <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: "8px" }}>
-                  What to check
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "12px" }}>
-                  {SCAN_CATEGORIES.map((cat) => {
-                    const selected = selectedCategories.has(cat.id);
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => toggleCategory(cat.id)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: "10px",
-                          padding: "10px 12px", cursor: "pointer",
-                          border: "none", transition: "all 0.15s", textAlign: "left",
-                          background: selected ? "var(--gold-subtle)" : "var(--bg-elevated)",
-                          borderLeft: selected ? "2px solid var(--gold-primary)" : "2px solid transparent",
-                        }}>
-                        <div style={{ width: "14px", height: "14px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: selected ? "var(--gold-primary)" : "transparent", border: `1px solid ${selected ? "var(--gold-primary)" : "var(--border-color)"}` }}>
-                          {selected && <span style={{ color: "var(--bg-primary)", fontSize: "9px", fontWeight: 700 }}>✓</span>}
+                {/* Results */}
+                {run && (
+                  <div style={{ marginTop: "14px" }}>
+                    {suggestions.length > 0 ? (
+                      <>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "10px" }}>
+                          {[{ key: "all" as const, label: "All", count: suggestions.length }, ...PROOF_CATEGORIES.filter((c) => counts[c.key]).map((c) => ({ key: c.key, label: c.label, count: counts[c.key]! }))].map((f) => (
+                            <button key={f.key} onClick={() => setFilter(f.key)}
+                              style={{ ...font, padding: "3px 8px", fontSize: "11px", cursor: "pointer", border: "1px solid var(--border-color)", background: filter === f.key ? "var(--bg-elevated)" : "transparent", color: filter === f.key ? "var(--text-primary)" : "var(--text-muted)" }}>
+                              {f.label} ({f.count})
+                            </button>
+                          ))}
                         </div>
-                        <span style={{ fontSize: "14px", flexShrink: 0 }}>{cat.icon}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 500, color: "var(--text-primary)", margin: "0 0 1px" }}>{cat.label}</p>
-                          <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", margin: 0 }}>{cat.description}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Select all / none */}
-                <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
-                  <button
-                    onClick={() => setSelectedCategories(new Set(SCAN_CATEGORIES.map((c) => c.id)))}
-                    style={{ fontSize: "11px", fontFamily: "var(--font-inter)", padding: "4px 10px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-muted)", cursor: "pointer" }}>
-                    Select all
-                  </button>
-                  <button
-                    onClick={() => setSelectedCategories(new Set([SCAN_CATEGORIES[0].id]))}
-                    style={{ fontSize: "11px", fontFamily: "var(--font-inter)", padding: "4px 10px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-dim)", cursor: "pointer" }}>
-                    Clear
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => void runCheck()}
-                  disabled={selectedCategories.size === 0 || (mode === "selection" && !selectionText)}
-                  style={{
-                    width: "100%", padding: "10px",
-                    background: "var(--gold-primary)", color: "var(--bg-primary)",
-                    border: "none", cursor: "pointer",
-                    fontSize: "13px", fontFamily: "var(--font-inter)", fontWeight: 600,
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                    opacity: selectedCategories.size === 0 ? 0.5 : 1,
-                  }}>
-                  <BookCheck style={{ width: "14px", height: "14px" }} />
-                  Proofread {mode === "selection" ? "Selection" : `— ${selectedCategories.size} categor${selectedCategories.size === 1 ? "y" : "ies"}`}
-                </button>
-              </div>
-            )}
-
-            {/* Loading */}
-            {loading && (
-              <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
-                <Loader2 style={{ width: "28px", height: "28px", color: "var(--gold-primary)", margin: "0 auto 1rem" }} className="animate-spin" />
-                <p style={{ fontSize: "13px", fontFamily: "var(--font-inter)", fontStyle: "italic", color: "var(--text-muted)", marginBottom: "4px" }}>
-                  Reading your {mode === "selection" ? "selection" : "chapter"}…
-                </p>
-                <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)" }}>
-                  This may take up to a minute.
-                </p>
-                {progress > 0 && (
-                  <div style={{ marginTop: "16px" }}>
-                    <div style={{ height: "2px", background: "var(--border-color)", marginBottom: "4px" }}>
-                      <motion.div
-                        style={{ height: "100%", background: "var(--gold-primary)" }}
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </div>
-                    <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-dim)" }}>{progress}%</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Error */}
-            {error && !loading && (
-              <div style={{ padding: "12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: "12px", fontFamily: "var(--font-inter)", marginBottom: "12px" }}>
-                <p style={{ fontWeight: 600, marginBottom: "4px" }}>Proofread failed</p>
-                <p style={{ marginBottom: "10px" }}>{error}</p>
-                <button
-                  onClick={() => void runCheck()}
-                  style={{ width: "100%", padding: "8px", background: "var(--gold-primary)", color: "var(--bg-primary)", border: "none", cursor: "pointer", fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 600 }}>
-                  Try Again
-                </button>
-              </div>
-            )}
-
-            {/* Results */}
-            {result && !loading && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <ScoreDisplay score={result.score} strengths={result.strengths ?? []} />
-
-                {result.summary && (
-                  <p style={{ fontFamily: "var(--font-cormorant)", fontSize: "14px", fontStyle: "italic", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.6 }}>
-                    {result.summary}
-                  </p>
-                )}
-
-                {allIssues.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "2rem" }}>
-                    <CheckCircle2 style={{ width: "36px", height: "36px", color: "#22c55e", margin: "0 auto 12px" }} />
-                    <p style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "4px" }}>Clean {mode === "selection" ? "selection" : "chapter"}!</p>
-                    <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-muted)" }}>No significant issues found.</p>
+                        {acceptable.length > 1 && (
+                          <button onClick={() => accept(acceptable)}
+                            style={{ ...font, display: "flex", alignItems: "center", gap: "5px", marginBottom: "10px", padding: 0, background: "none", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "var(--gold-primary)" }}>
+                            <CheckCheck style={{ width: "13px", height: "13px" }} />
+                            Accept all {acceptable.length}{filter === "all" ? "" : ` ${CATEGORY[filter].label.toLowerCase()}`} fixes
+                          </button>
+                        )}
+                        {visible.map((s) => (
+                          <SuggestionCard key={s.id} s={s}
+                            onAccept={() => accept([s])}
+                            onReject={() => void reject(s)}
+                            onShow={() => show(s)} />
+                        ))}
+                      </>
+                    ) : running ? null : (
+                      <p style={{ ...font, fontSize: "12.5px", color: "var(--text-muted)", textAlign: "center", padding: "16px 0" }}>
+                        {run.failed === run.total ? "" : "All clear. Nothing left to fix in this chapter."}
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {allIssues.length > 0 && (
-                  <>
-                    {/* Filter tabs */}
-                    <div style={{ display: "flex", gap: "1px", marginBottom: "12px", padding: "3px", background: "var(--bg-elevated)" }}>
-                      {[
-                        { key: "all",         label: `All ${allIssues.length}` },
-                        { key: "errors",      label: `Errors ${errorCount}` },
-                        { key: "warnings",    label: `Warnings ${warningCount}` },
-                        { key: "suggestions", label: `Tips ${suggCount}` },
-                      ].map(({ key, label }) => (
-                        <button key={key}
-                          onClick={() => setActiveTab(key as typeof activeTab)}
-                          style={{
-                            flex: 1, padding: "5px 4px",
-                            fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600,
-                            border: "none", cursor: "pointer", transition: "all 0.15s",
-                            background: activeTab === key ? "var(--gold-primary)" : "transparent",
-                            color: activeTab === key ? "var(--bg-primary)" : "var(--text-muted)",
-                          }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {filtered.map((issue, i) => (
-                      <IssueCard key={i} issue={issue} editor={editor} />
-                    ))}
-                  </>
+                {ignoredHere && ignoredHere.size > 0 && !running && (
+                  <p style={{ ...font, fontSize: "11px", color: "var(--text-dim)", margin: "12px 0 0", display: "flex", alignItems: "center", gap: "6px" }}>
+                    {ignoredHere.size} rejected {ignoredHere.size === 1 ? "suggestion is" : "suggestions are"} hidden.
+                    <button onClick={() => void resetIgnored()} title="Let rejected suggestions come back"
+                      style={{ ...font, display: "inline-flex", alignItems: "center", gap: "3px", padding: 0, background: "none", border: "none", cursor: "pointer", fontSize: "11px", color: "var(--text-muted)", textDecoration: "underline" }}>
+                      <RotateCcw style={{ width: "10px", height: "10px" }} /> Reset
+                    </button>
+                  </p>
                 )}
-
-                {/* Actions */}
-                <div style={{ display: "flex", gap: "6px", marginTop: "16px" }}>
-                  <button
-                    onClick={() => void runCheck()}
-                    style={{ flex: 1, padding: "8px", background: "var(--bg-elevated)", border: "1px solid var(--border-color)", color: "var(--text-secondary)", fontSize: "12px", fontFamily: "var(--font-inter)", cursor: "pointer", transition: "all 0.15s" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}>
-                    Check Again
-                  </button>
-                  <button
-                    onClick={() => { setResult(null); setHasRun(false); }}
-                    style={{ flex: 1, padding: "8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-dim)", fontSize: "12px", fontFamily: "var(--font-inter)", cursor: "pointer", transition: "all 0.15s" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-dim)"; }}>
-                    ← Categories
-                  </button>
-                </div>
-              </motion.div>
+              </>
             )}
           </div>
         </motion.div>

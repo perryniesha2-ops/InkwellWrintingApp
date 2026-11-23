@@ -303,8 +303,6 @@ const [storyboardOpen, setStoryboardOpen] = useState(false);
   const canEditBook = isOwner || doc?.access?.scope === "book";
 
   const activeChapter = chapters.find((c) => c.id === activeChapterId) ?? null;
-  // Per-chapter text for the proofreading/analysis panels.
-  const content = activeChapter?.content ?? "";
   const manuscript = useMemo(() => compileManuscript(chapters), [chapters]);
 
   useEffect(() => {
@@ -1519,7 +1517,9 @@ useEffect(() => {
         )}
         {GrammarChecker && (
           <GrammarChecker
-            content={content}
+            documentId={doc?.id ?? ""}
+            chapterId={view === "write" ? activeChapterId : null}
+            chapterTitle={activeChapter?.title ?? ""}
             genre={genre}
             editor={editor}
             isOpen={grammarOpen}
