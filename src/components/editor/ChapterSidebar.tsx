@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, GripVertical,
-  Plus, Trash2, Users, MapPin, Sparkles, BookMarked, FileText, FileUp, Loader2, Globe, NotebookPen,
+  Plus, Trash2, Users, MapPin, Sparkles, BookMarked, FileText, FileUp, Loader2, Globe, NotebookPen, ListTree,
 } from "lucide-react";
 import {
   buildChapterTree, moveChapter,
@@ -14,6 +14,7 @@ import { groupElements, type NewElementType, type StoryElement } from "@/lib/sto
 import NewElementMenu from "@/components/editor/NewElementMenu";
 import type { Peer } from "@/hooks/useBookChannel";
 import { byRecent, type Note, type NoteKind } from "@/lib/notes";
+import type { OutlineDoc } from "@/lib/outlineDocs";
 
 interface ChapterSidebarProps {
   documentId: string;
@@ -39,6 +40,12 @@ interface ChapterSidebarProps {
   /** Open a note in the right sidebar, or the notes list when null. */
   onOpenNote: (id: string | null) => void;
   onCreateNote: (kind: NoteKind) => void;
+  /** Outlines uploaded to the Story Bible. */
+  outlines: OutlineDoc[];
+  /** Show an outline in the right sidebar (or the list, for null). */
+  onOpenOutline: (id: string | null) => void;
+  /** Upload a .docx outline to the Story Bible and show it. */
+  onUploadOutline: (file: File) => Promise<void>;
 }
 
 const RECENT_NOTES = 5;
@@ -58,11 +65,13 @@ export default function ChapterSidebar({
   documentId, chapters, activeChapterId, collapsed, onToggleCollapsed,
   onSelect, onAdd, onRename, onDelete, onMove,
   elements, onOpenElement, onCreateElement, onImport, canEditStructure, peers,
-  notes, onOpenNote, onCreateNote,
+  notes, onOpenNote, onCreateNote, outlines, onOpenOutline, onUploadOutline,
 }: ChapterSidebarProps) {
   const [noteMenuOpen, setNoteMenuOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const outlineRef = useRef<HTMLInputElement>(null);
+  const [uploadingOutline, setUploadingOutline] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -337,6 +346,65 @@ export default function ChapterSidebar({
               </div>
             );
           })}
+        </div>
+
+        {/* Outline (uploaded to the Story Bible) */}
+        <div style={{ borderTop: "1px solid var(--border-color)", padding: "10px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 6px 12px" }}>
+            <button onClick={() => onOpenOutline(null)} style={{ ...iconButton, padding: 0 }} title="Open the outline">
+              <span style={sectionLabel}>Outline</span>
+            </button>
+            <div style={{ display: "flex", gap: "2px" }}>
+              {canEditStructure && (
+                <>
+                  <button title="Upload an outline (.docx)" onClick={() => outlineRef.current?.click()} disabled={uploadingOutline} style={iconButton}>
+                    {uploadingOutline
+                      ? <Loader2 className="animate-spin" style={{ width: "12px", height: "12px" }} />
+                      : <FileUp style={{ width: "12px", height: "12px" }} />}
+                  </button>
+                  <input
+                    ref={outlineRef}
+                    type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc"
+                    hidden
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setUploadingOutline(true);
+                      await onUploadOutline(file);
+                      setUploadingOutline(false);
+                    }}
+                  />
+                </>
+              )}
+              <Link href={`/bible/${documentId}`} title="Open Story Bible" style={{ ...iconButton, textDecoration: "none" }}>
+                <BookMarked style={{ width: "12px", height: "12px" }} />
+              </Link>
+            </div>
+          </div>
+          {outlines.length === 0 ? (
+            canEditStructure ? (
+              <button onClick={() => outlineRef.current?.click()} disabled={uploadingOutline}
+                style={{ ...iconButton, padding: "0 12px", fontSize: "11px", fontFamily: "var(--font-inter)", fontStyle: "italic", textAlign: "left" }}>
+                {uploadingOutline ? "Uploading…" : "Upload your outline from Word (.docx)."}
+              </button>
+            ) : (
+              <p style={{ fontSize: "11px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", fontStyle: "italic", padding: "0 12px", margin: 0 }}>
+                No outline yet.
+              </p>
+            )
+          ) : (
+            outlines.map((o) => (
+              <button key={o.id} onClick={() => onOpenOutline(o.id)} title={o.fileName ?? o.title}
+                style={{ ...iconButton, width: "100%", justifyContent: "flex-start", gap: "8px", padding: "3px 12px 3px 16px" }}>
+                <ListTree style={{ width: "11px", height: "11px", flexShrink: 0 }} />
+                <span style={{ fontSize: "11.5px", fontFamily: "var(--font-inter)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {o.title}
+                </span>
+              </button>
+            ))
+          )}
         </div>
 
         {/* Notes & research */}

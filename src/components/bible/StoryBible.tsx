@@ -24,6 +24,8 @@ import {
   NotebookPen,
 } from "lucide-react";
 import CharacterQuestionnaire, { type SaveStatus } from "@/components/bible/CharacterQuestionnaire";
+import { OutlineDocDetail, OutlineDocList, type OutlineNotice } from "@/components/bible/OutlineDocs";
+import { useOutlineDocs } from "@/hooks/useOutlineDocs";
 import {
   normalizeAnswers, overallProgress, type QuestionnaireAnswers,
 } from "@/lib/characterQuestionnaire";
@@ -389,6 +391,10 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
   );
 
   const [outlineSections, setOutlineSections] = useState<OutlineSection[]>([]);
+  // Outlines uploaded from Word, listed above the chapter cards.
+  const outlineDocs = useOutlineDocs(id);
+  const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null);
+  const [outlineNotice, setOutlineNotice] = useState<OutlineNotice>(null);
   const [activeSection, setActiveSection] = useState<OutlineSection | null>(
     null,
   );
@@ -402,6 +408,8 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
+  // A chapter card, when one is open, takes the detail area.
+  const activeOutline = activeSection ? null : outlineDocs.outlines.find((o) => o.id === activeOutlineId) ?? null;
 
 
   // Load everything
@@ -542,6 +550,7 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
     const section = camelize<OutlineSection>(await res.json());
     setOutlineSections((prev) => [...prev, section]);
     setActiveSection(section);
+    setActiveOutlineId(null);
   };
 
  const saveSection = async (section: OutlineSection) => {
@@ -781,7 +790,7 @@ const deleteTimelineEvent = async (eventId: string) => {
       id: "outline",
       label: "Outline",
       icon: BookOpen,
-      count: outlineSections.length,
+      count: outlineSections.length + outlineDocs.outlines.length,
     },
     { id: "world", label: "World", icon: Globe, count: worldEntries.length },
     { id: "timeline",   label: "Timeline",   icon: Clock,     count: timelineEvents.length },
@@ -1156,12 +1165,27 @@ const deleteTimelineEvent = async (eventId: string) => {
                 </button>
               ))}
 
+            {/* Uploaded outlines */}
+            {activeTab === "outline" && (
+              <OutlineDocList
+                api={outlineDocs}
+                chapterCount={outlineSections.length}
+                activeId={activeOutline?.id ?? null}
+                onOpen={(outlineId) => { setActiveSection(null); setActiveOutlineId(outlineId); }}
+                onUploaded={(outline, warnings) => {
+                  setOutlineNotice(warnings.length ? { id: outline.id, warnings } : null);
+                  setActiveSection(null);
+                  setActiveOutlineId(outline.id);
+                }}
+              />
+            )}
+
             {/* Outline list */}
             {activeTab === "outline" &&
               outlineSections.map((section, i) => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section)}
+                  onClick={() => { setActiveSection(section); setActiveOutlineId(null); }}
                   style={{
                     width: "100%",
                     display: "flex",
@@ -1739,6 +1763,18 @@ const deleteTimelineEvent = async (eventId: string) => {
                 />
               </Section>
             </div>
+          )}
+
+          {/* Uploaded outline */}
+          {activeTab === "outline" && activeOutline && (
+            <OutlineDocDetail
+              key={activeOutline.id}
+              outline={activeOutline}
+              api={outlineDocs}
+              notice={outlineNotice}
+              onNotice={setOutlineNotice}
+              onDeleted={() => setActiveOutlineId(null)}
+            />
           )}
 
           {/* Outline detail */}
@@ -2466,7 +2502,7 @@ const deleteTimelineEvent = async (eventId: string) => {
             </div>
           )}
 
-          {activeTab === "outline" && !activeSection && (
+          {activeTab === "outline" && !activeSection && !activeOutline && (
             <div
               style={{
                 display: "flex",
@@ -2484,7 +2520,7 @@ const deleteTimelineEvent = async (eventId: string) => {
                 }}
               >
                 {outlineSections.length === 0
-                  ? "Add your first chapter to start outlining."
+                  ? "Add your first chapter to start outlining, or upload an outline from Word."
                   : "Select a chapter to view details."}
               </p>
             </div>

@@ -8,6 +8,7 @@ import {
   type IssueCategory, type PassKey, type PassProgress, type PassResult,
   type PlotEvidence, type PlotIssue, type PlotThread, type Severity,
 } from "@/lib/plotCheck";
+import { outlineText } from "@/lib/outlineDocs";
 
 export const PLOT_CHECK_MODEL = "claude-opus-5-5";
 
@@ -52,10 +53,11 @@ function describeRow(row: Row, titleKey: string): string {
 }
 
 export async function loadManuscript(supabase: SupabaseClient, documentId: string): Promise<Manuscript> {
-  const [{ data: doc, error: docError }, { data: chapterRows, error: chError }, { data: bible }] = await Promise.all([
+  const [{ data: doc, error: docError }, { data: chapterRows, error: chError }, { data: bible }, { data: outlineDocs }] = await Promise.all([
     supabase.from("documents").select("title, genre").eq("id", documentId).single(),
     supabase.from("chapters").select("id, document_id, parent_id, title, content, synopsis, guidance, order_index").eq("document_id", documentId),
     supabase.from("story_bibles").select("id").eq("document_id", documentId).maybeSingle(),
+    supabase.from("outline_documents").select("title, content").eq("document_id", documentId).order("created_at"),
   ]);
   if (docError || !doc) throw new Error(docError?.message ?? "Book not found");
   if (chError) throw new Error(chError.message);
@@ -85,6 +87,11 @@ export async function loadManuscript(supabase: SupabaseClient, documentId: strin
     add("World", world.data as Row[] | null, "title");
     add("Outline", outline.data as Row[] | null, "title");
     add("Timeline", timeline.data as Row[] | null, "title");
+  }
+  // Outlines the author uploaded from Word, as written.
+  for (const o of (outlineDocs ?? []) as { title: string | null; content: string | null }[]) {
+    const text = outlineText(o.content ?? "");
+    if (text) sections.push(`# Outline document: ${o.title || "Outline"}\n\n${text}`);
   }
 
   return {

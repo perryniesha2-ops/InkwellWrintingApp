@@ -32,6 +32,7 @@ import type { Editor } from "@tiptap/react";
 import { useEditorPrefs } from "@/hooks/useEditorPrefs";
 import { useStoryElements } from "@/hooks/useStoryElements";
 import { useNotes } from "@/hooks/useNotes";
+import { useOutlineDocs } from "@/hooks/useOutlineDocs";
 import type { NoteKind } from "@/lib/notes";
 import type { NewElementType } from "@/lib/storyElements";
 import type { OutlineTemplate } from "@/lib/outlineTemplates";
@@ -105,6 +106,9 @@ const RevisionPanel = dynamic(
 );
 
 const NotesPanel = dynamic(() => import("@/components/editor/NotesPanel"), {
+  ssr: false,
+});
+const OutlinePanel = dynamic(() => import("@/components/editor/OutlinePanel"), {
   ssr: false,
 });
 const CommentsPanel = dynamic(() => import("@/components/editor/CommentsPanel"), {
@@ -284,6 +288,11 @@ const [storyboardOpen, setStoryboardOpen] = useState(false);
   const notesApi = useNotes(storyElements.bibleId, storyElements.noteRows);
   const [notesOpen, setNotesOpen] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const outlineDocs = useOutlineDocs(doc?.id);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [selectedOutlineId, setSelectedOutlineId] = useState<string | null>(null);
+  // Things left out of an outline when it was uploaded (images).
+  const [outlineNotice, setOutlineNotice] = useState<{ id: string; warnings: string[] } | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   // A comment to scroll to once its chapter has loaded in the editor.
@@ -527,6 +536,7 @@ useEffect(() => {
   const showComment = useCallback((commentId: string | null) => {
     setPlotCheckOpen(false); setGrammarOpen(false); setReadabilityOpen(false); setThesaurusOpen(false);
     setStoryboardOpen(false); setElementsOpen(false); setRevisionsOpen(false); setNotesOpen(false);
+    setOutlineOpen(false);
     setCommentsOpen(true);
     setActiveCommentId(commentId);
   }, []);
@@ -814,6 +824,7 @@ useEffect(() => {
       | "elements"
       | "history"
       | "notes"
+      | "outline"
       | "comments",
   ) => {
     setPlotCheckOpen(panel === "plot" ? (o) => !o : false);
@@ -824,7 +835,22 @@ useEffect(() => {
     setElementsOpen(panel === "elements" ? (o) => !o : false);
     setRevisionsOpen(panel === "history" ? (o) => !o : false);
     setNotesOpen(panel === "notes" ? (o) => !o : false);
+    setOutlineOpen(panel === "outline" ? (o) => !o : false);
     setCommentsOpen(panel === "comments" ? (o) => !o : false);
+  };
+
+  // Show an outline (or the list of them, for null) in the right sidebar.
+  const openOutline = (outlineId: string | null) => {
+    openRightPanel("outline");
+    setOutlineOpen(true);
+    setSelectedOutlineId(outlineId);
+  };
+
+  // Upload a .docx outline to the Story Bible and show it. Throws on failure.
+  const uploadOutline = async (file: File) => {
+    const { outline, warnings } = await outlineDocs.upload(file);
+    setOutlineNotice(warnings.length ? { id: outline.id, warnings } : null);
+    openOutline(outline.id);
   };
 
   // Show a note (or the notes list, for null) in the right sidebar.
@@ -891,6 +917,7 @@ useEffect(() => {
       elementsOpen ||
       revisionsOpen ||
       notesOpen ||
+      outlineOpen ||
       commentsOpen) &&
     !focusMode;
 
@@ -1339,6 +1366,9 @@ useEffect(() => {
             notes={notesApi.notes}
             onOpenNote={openNote}
             onCreateNote={(kind) => void createNote(kind)}
+            outlines={outlineDocs.outlines}
+            onOpenOutline={openOutline}
+            onUploadOutline={(file) => uploadOutline(file).catch((err: Error) => alert(err.message))}
           />
         )}
 
@@ -1582,6 +1612,21 @@ useEffect(() => {
     }}
     isOpen={notesOpen}
     onClose={() => setNotesOpen(false)}
+    readOnly={!canEditBook}
+  />
+)}
+{doc && (
+  <OutlinePanel
+    api={outlineDocs}
+    documentId={doc.id}
+    selectedId={selectedOutlineId}
+    onSelect={setSelectedOutlineId}
+    chapterTitle={view === "write" ? activeChapter?.title ?? "" : ""}
+    onUpload={uploadOutline}
+    notice={outlineNotice}
+    onDismissNotice={() => setOutlineNotice(null)}
+    isOpen={outlineOpen}
+    onClose={() => setOutlineOpen(false)}
     readOnly={!canEditBook}
   />
 )}
