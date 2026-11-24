@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookText,
@@ -11,20 +11,14 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { Editor } from "@tiptap/react";
-
-interface DamuseWord {
-  word: string;
-  score: number;
-  tags?: string[];
-}
-
-interface WordResult {
-  synonyms: string[];
-  related: string[];
-  moreSpecific: string[];
-  moreGeneral: string[];
-  antonyms: string[];
-}
+import { TextSelection } from "@tiptap/pm/state";
+import {
+  isEmpty,
+  lookupWord,
+  matchCase,
+  splitPossessive,
+  type ThesaurusResult,
+} from "@/lib/thesaurus";
 
 interface ThesaurusPanelProps {
   editor: Editor | null;
@@ -32,57 +26,52 @@ interface ThesaurusPanelProps {
   onClose: () => void;
 }
 
-async function fetchWordData(word: string): Promise<WordResult> {
-  const encoded = encodeURIComponent(word.toLowerCase().trim());
+/** Stands in for images and other non-text nodes, one character each. */
+const OBJECT = String.fromCharCode(0xfffc);
 
-  const [synonyms, related, moreSpecific, moreGeneral, antonyms] =
-    await Promise.all([
-      fetch(`https://api.datamuse.com/words?rel_syn=${encoded}&max=15`).then(
-        (r) => r.json(),
-      ) as Promise<DamuseWord[]>,
-      fetch(`https://api.datamuse.com/words?ml=${encoded}&max=12`).then((r) =>
-        r.json(),
-      ) as Promise<DamuseWord[]>,
-      fetch(`https://api.datamuse.com/words?rel_spc=${encoded}&max=10`).then(
-        (r) => r.json(),
-      ) as Promise<DamuseWord[]>,
-      fetch(`https://api.datamuse.com/words?rel_gen=${encoded}&max=8`).then(
-        (r) => r.json(),
-      ) as Promise<DamuseWord[]>,
-      fetch(`https://api.datamuse.com/words?rel_ant=${encoded}&max=8`).then(
-        (r) => r.json(),
-      ) as Promise<DamuseWord[]>,
-    ]);
+interface Target {
+  from: number;
+  to: number;
+  text: string;
+}
 
-  return {
-    synonyms: synonyms.map((w) => w.word),
-    related: related.map((w) => w.word),
-    moreSpecific: moreSpecific.map((w) => w.word),
-    moreGeneral: moreGeneral.map((w) => w.word),
-    antonyms: antonyms.map((w) => w.word),
-  };
+/**
+ * The selected word or short phrase (up to four words, within one paragraph),
+ * without the spaces, quotes or punctuation around it that a double-click or
+ * drag can pick up.
+ */
+function selectionTarget(editor: Editor): Target | null {
+  const { from, to, empty, $from, $to } = editor.state.selection;
+  if (empty || !$from.sameParent($to) || !$from.parent.isTextblock) return null;
+  const raw = editor.state.doc.textBetween(from, to, "\n", OBJECT);
+  const lead = /^[^\p{L}\p{N}]*/u.exec(raw)![0].length;
+  if (lead === raw.length) return null;
+  const trail = /[^\p{L}\p{N}]*$/u.exec(raw)![0].length;
+  const text = raw.slice(lead, raw.length - trail);
+  if (text.includes(OBJECT) || text.split(/\s+/).length > 4) return null;
+  return { from: from + lead, to: to - trail, text };
 }
 
 function WordChip({
   word,
   onClick,
-  color,
+  action,
 }: {
   word: string;
   onClick: () => void;
-  color?: string;
+  action: string;
 }) {
   return (
     <button
       onClick={onClick}
-      title={`Replace with "${word}"`}
+      title={`${action} “${word}”`}
       style={{
         padding: "4px 10px",
         fontSize: "12px",
         fontFamily: "var(--font-inter)",
         background: "var(--bg-elevated)",
         border: "1px solid var(--border-color)",
-        color: color ?? "var(--text-secondary)",
+        color: "var(--text-secondary)",
         cursor: "pointer",
         transition: "all 0.15s",
         display: "inline-flex",
@@ -101,8 +90,7 @@ function WordChip({
           "var(--bg-elevated)";
         (e.currentTarget as HTMLElement).style.borderColor =
           "var(--border-color)";
-        (e.currentTarget as HTMLElement).style.color =
-          color ?? "var(--text-secondary)";
+        (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
       }}
     >
       {word}
@@ -114,10 +102,12 @@ function WordChip({
 function ResultSection({
   title,
   words,
+  action,
   onSelect,
 }: {
   title: string;
   words: string[];
+  action: string;
   onSelect: (word: string) => void;
 }) {
   if (words.length === 0) return null;
@@ -138,7 +128,12 @@ function ResultSection({
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
         {words.map((word) => (
-          <WordChip key={word} word={word} onClick={() => onSelect(word)} />
+          <WordChip
+            key={word}
+            word={word}
+            action={action}
+            onClick={() => onSelect(word)}
+          />
         ))}
       </div>
     </div>
@@ -152,85 +147,133 @@ export default function ThesaurusPanel({
 }: ThesaurusPanelProps) {
   const [searchInput, setSearchInput] = useState("");
   const [activeWord, setActiveWord] = useState("");
-  const [result, setResult] = useState<WordResult | null>(null);
+  const [result, setResult] = useState<ThesaurusResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
-  const [replaced, setReplaced] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  /** The selected text a click would replace, if any. */
+  const [targetText, setTargetText] = useState<string | null>(null);
 
-  const lookup = useCallback(async (word: string) => {
-    const trimmed = word.trim();
-    if (!trimmed) return;
+  const lookupSeq = useRef(0);
+  const lookupAbort = useRef<AbortController | null>(null);
+  /** Selected text already dealt with, so it isn't looked up again. */
+  const handled = useRef<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const flash = (text: string) => {
+    setNotice(text);
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 2500);
+  };
+
+  const lookup = useCallback(async (word: string, fresh = false) => {
+    const query = word.trim();
+    if (!query) return;
+    // Only the latest lookup's results count.
+    const id = ++lookupSeq.current;
+    lookupAbort.current?.abort();
+    const abort = new AbortController();
+    lookupAbort.current = abort;
 
     setLoading(true);
     setError(null);
     setResult(null);
-    setActiveWord(trimmed);
-    setReplaced(null);
+    setActiveWord(query);
+    setNotice(null);
 
     try {
-      const data = await fetchWordData(trimmed);
-      const hasResults = Object.values(data).some((arr) => arr.length > 0);
-      if (!hasResults) {
-        setError(`No results found for "${trimmed}"`);
+      const data = await lookupWord(query, { signal: abort.signal, fresh });
+      if (id !== lookupSeq.current) return;
+      if (isEmpty(data)) {
+        setError(`No results found for “${query}”`);
       } else {
         setResult(data);
-        setHistory((prev) => {
-          const filtered = prev.filter((w) => w !== trimmed);
-          return [trimmed, ...filtered].slice(0, 8);
-        });
+        const key = query.toLowerCase();
+        setHistory((prev) => [key, ...prev.filter((w) => w !== key)].slice(0, 8));
       }
     } catch {
-      setError("Failed to fetch results. Check your connection.");
+      if (id === lookupSeq.current) {
+        setError("Couldn't reach the thesaurus. Check your connection and try again.");
+      }
     } finally {
-      setLoading(false);
+      if (id === lookupSeq.current) setLoading(false);
     }
   }, []);
 
-  // Auto-detect selected word from editor
+  // Look up the word selected in the editor: the one selected when the panel
+  // opens, then each new one.
   useEffect(() => {
     if (!editor || !isOpen) return;
-
-    const handleSelectionChange = () => {
-      const { from, to } = editor.state.selection;
-      if (from === to) return;
-      const selectedText = editor.state.doc.textBetween(from, to, " ").trim();
-      const wordCount = selectedText.split(/\s+/).filter(Boolean).length;
-      if (selectedText && wordCount <= 4) {
-        setSearchInput(selectedText);
-        void lookup(selectedText);
+    handled.current = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const target = selectionTarget(editor);
+      setTargetText(target?.text ?? null);
+      if (!target) {
+        handled.current = null;
+        return;
       }
+      // The same text: a collaborator's edit moved the selection, or it's the
+      // word just put in from this panel.
+      if (target.text === handled.current) return;
+      handled.current = target.text;
+      const { query } = splitPossessive(target.text);
+      setSearchInput(query);
+      void lookup(query);
     };
-
-    editor.on("selectionUpdate", handleSelectionChange);
+    // Every transaction, not just "selectionUpdate": that only fires when the
+    // selection moves, not when the text inside it changes. Waits for a drag
+    // or shift-select to settle.
+    const onTransaction = () => {
+      clearTimeout(timer);
+      timer = setTimeout(check, 250);
+    };
+    editor.on("transaction", onTransaction);
+    timer = setTimeout(check, 0);
     return () => {
-      editor.off("selectionUpdate", handleSelectionChange);
+      clearTimeout(timer);
+      editor.off("transaction", onTransaction);
     };
   }, [editor, isOpen, lookup]);
 
-  const handleSearch = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleSearch = () => {
     if (searchInput.trim()) void lookup(searchInput);
   };
 
-  const replaceInEditor = (newWord: string) => {
-    if (!editor) return;
-    const { from, to } = editor.state.selection;
-    if (from !== to) {
-      editor
-        .chain()
-        .focus()
-        .deleteRange({ from, to })
-        .insertContentAt(from, newWord)
-        .run();
-      setReplaced(newWord);
-    } else {
-      // No selection — just copy to clipboard
-      void navigator.clipboard.writeText(newWord);
-      setReplaced(newWord);
+  const copy = (word: string) => {
+    if (!navigator.clipboard) {
+      flash("Select a word in the editor to replace it");
+      return;
     }
-    setTimeout(() => setReplaced(null), 2000);
+    navigator.clipboard.writeText(word).then(
+      () => flash(`✓ Copied “${word}”`),
+      () => flash(`Couldn't copy “${word}”`),
+    );
   };
+
+  /** Replace the selected word (keeping its formatting and capitals), or copy the word. */
+  const choose = (word: string) => {
+    const target = editor?.isEditable ? selectionTarget(editor) : null;
+    if (!editor || !target) {
+      copy(word);
+      return;
+    }
+    const insert =
+      matchCase(target.text, word) + splitPossessive(target.text).suffix;
+    const { from, to } = target;
+    // insertText keeps marks that cover the whole word (italics, comments).
+    const tr = editor.state.tr.insertText(insert, from, to);
+    // Leave the new word selected so another choice can replace it in turn.
+    tr.setSelection(TextSelection.create(tr.doc, from, from + insert.length));
+    handled.current = insert;
+    setTargetText(insert);
+    editor.view.dispatch(tr);
+    editor.view.focus();
+    flash(`✓ Replaced with “${insert}”`);
+  };
+
+  const action = targetText ? "Replace with" : "Copy";
 
   return (
     <AnimatePresence>
@@ -288,6 +331,8 @@ export default function ThesaurusPanel({
             </div>
             <button
               onClick={onClose}
+              title="Close"
+              aria-label="Close thesaurus"
               style={{
                 color: "var(--text-muted)",
                 background: "none",
@@ -338,6 +383,7 @@ export default function ThesaurusPanel({
                     if (e.key === "Enter") handleSearch();
                   }}
                   placeholder="Search a word or phrase…"
+                  aria-label="Word or phrase to look up"
                   style={{
                     width: "100%",
                     paddingLeft: "32px",
@@ -362,6 +408,8 @@ export default function ThesaurusPanel({
               <button
                 onClick={handleSearch}
                 disabled={loading || !searchInput.trim()}
+                title="Look up"
+                aria-label="Look up"
                 style={{
                   padding: "8px 12px",
                   background: searchInput.trim()
@@ -403,12 +451,12 @@ export default function ThesaurusPanel({
 
           {/* Content */}
           <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-            {/* Replaced confirmation */}
-            {replaced && (
+            {/* Replaced / copied confirmation */}
+            {notice && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
+                role="status"
                 style={{
                   padding: "8px 12px",
                   background: "var(--gold-subtle)",
@@ -419,7 +467,7 @@ export default function ThesaurusPanel({
                   color: "var(--gold-primary)",
                 }}
               >
-                ✓ Replaced with &quot;{replaced}&quot;
+                {notice}
               </motion.div>
             )}
 
@@ -520,12 +568,13 @@ export default function ThesaurusPanel({
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "center",
+                    alignItems: "flex-start",
                     justifyContent: "space-between",
+                    gap: "8px",
                     marginBottom: "16px",
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <h3
                       style={{
                         fontFamily: "var(--font-dm-sans)",
@@ -534,23 +583,43 @@ export default function ThesaurusPanel({
                         letterSpacing: "-0.02em",
                         color: "var(--text-primary)",
                         margin: 0,
+                        overflowWrap: "anywhere",
                       }}
                     >
                       {activeWord}
+                      {result.lemma && (
+                        <span
+                          style={{
+                            fontFamily: "var(--font-inter)",
+                            fontWeight: 400,
+                            fontSize: "11px",
+                            letterSpacing: 0,
+                            color: "var(--text-dim)",
+                            marginLeft: "8px",
+                          }}
+                        >
+                          form of “{result.lemma}”
+                        </span>
+                      )}
                     </h3>
                     <p
                       style={{
                         fontSize: "11px",
                         fontFamily: "var(--font-inter)",
                         color: "var(--text-muted)",
-                        margin: 0,
+                        margin: "2px 0 0",
+                        overflowWrap: "anywhere",
                       }}
                     >
-                      Click any word to replace selection
+                      {targetText
+                        ? `Click a word to replace “${targetText}”`
+                        : "Click a word to copy it, or select a word in the editor to replace it"}
                     </p>
                   </div>
                   <button
-                    onClick={() => void lookup(activeWord)}
+                    onClick={() => void lookup(activeWord, true)}
+                    title="Look up again"
+                    aria-label="Look up again"
                     style={{
                       color: "var(--text-dim)",
                       background: "none",
@@ -558,6 +627,7 @@ export default function ThesaurusPanel({
                       cursor: "pointer",
                       display: "flex",
                       padding: "4px",
+                      flexShrink: 0,
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.color =
@@ -583,30 +653,33 @@ export default function ThesaurusPanel({
                 <ResultSection
                   title="Synonyms"
                   words={result.synonyms}
-                  onSelect={replaceInEditor}
+                  action={action}
+                  onSelect={choose}
+                />
+                <ResultSection
+                  title="More Specific"
+                  words={result.specific}
+                  action={action}
+                  onSelect={choose}
                 />
                 <ResultSection
                   title="Related Words"
                   words={result.related}
-                  onSelect={replaceInEditor}
-                />
-                <ResultSection
-                  title="More Specific"
-                  words={result.moreSpecific}
-                  onSelect={replaceInEditor}
+                  action={action}
+                  onSelect={choose}
                 />
                 <ResultSection
                   title="More General"
-                  words={result.moreGeneral}
-                  onSelect={replaceInEditor}
+                  words={result.general}
+                  action={action}
+                  onSelect={choose}
                 />
-                {result.antonyms.length > 0 && (
-                  <ResultSection
-                    title="Antonyms"
-                    words={result.antonyms}
-                    onSelect={replaceInEditor}
-                  />
-                )}
+                <ResultSection
+                  title="Antonyms"
+                  words={result.antonyms}
+                  action={action}
+                  onSelect={choose}
+                />
               </motion.div>
             )}
 
