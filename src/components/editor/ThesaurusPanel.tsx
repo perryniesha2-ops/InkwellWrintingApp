@@ -13,8 +13,9 @@ import {
 import type { Editor } from "@tiptap/react";
 import { TextSelection } from "@tiptap/pm/state";
 import {
+  fetchThesaurus,
   isEmpty,
-  lookupWord,
+  MAX_QUERY_LENGTH,
   matchCase,
   splitPossessive,
   type ThesaurusResult,
@@ -173,6 +174,12 @@ export default function ThesaurusPanel({
     // Only the latest lookup's results count.
     const id = ++lookupSeq.current;
     lookupAbort.current?.abort();
+    if (query.length > MAX_QUERY_LENGTH || query.split(/\s+/).length > 4) {
+      setLoading(false);
+      setResult(null);
+      setError("Look up a word or a phrase of up to four words.");
+      return;
+    }
     const abort = new AbortController();
     lookupAbort.current = abort;
 
@@ -183,7 +190,7 @@ export default function ThesaurusPanel({
     setNotice(null);
 
     try {
-      const data = await lookupWord(query, { signal: abort.signal, fresh });
+      const data = await fetchThesaurus(query, { signal: abort.signal, fresh });
       if (id !== lookupSeq.current) return;
       if (isEmpty(data)) {
         setError(`No results found for “${query}”`);
@@ -192,9 +199,9 @@ export default function ThesaurusPanel({
         const key = query.toLowerCase();
         setHistory((prev) => [key, ...prev.filter((w) => w !== key)].slice(0, 8));
       }
-    } catch {
+    } catch (err) {
       if (id === lookupSeq.current) {
-        setError("Couldn't reach the thesaurus. Check your connection and try again.");
+        setError(err instanceof Error ? err.message : "Couldn't reach the thesaurus.");
       }
     } finally {
       if (id === lookupSeq.current) setLoading(false);
@@ -383,6 +390,7 @@ export default function ThesaurusPanel({
                     if (e.key === "Enter") handleSearch();
                   }}
                   placeholder="Search a word or phrase…"
+                  maxLength={MAX_QUERY_LENGTH}
                   aria-label="Word or phrase to look up"
                   style={{
                     width: "100%",
