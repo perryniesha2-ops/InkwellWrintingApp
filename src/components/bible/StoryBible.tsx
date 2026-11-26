@@ -26,6 +26,7 @@ import {
 import CharacterQuestionnaire, { type SaveStatus } from "@/components/bible/CharacterQuestionnaire";
 import { OutlineDocDetail, OutlineDocList, type OutlineNotice } from "@/components/bible/OutlineDocs";
 import { useOutlineDocs } from "@/hooks/useOutlineDocs";
+import { TimelineImportButton, TimelineImportPreview, type TimelineDraft } from "@/components/bible/TimelineImport";
 import {
   normalizeAnswers, overallProgress, type QuestionnaireAnswers,
 } from "@/lib/characterQuestionnaire";
@@ -408,6 +409,8 @@ export function StoryBiblePage({ id }: StoryBiblePageProps) {
 
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
+  // Events read from an imported document, waiting for review.
+  const [timelineDraft, setTimelineDraft] = useState<TimelineDraft | null>(null);
   // A chapter card, when one is open, takes the detail area.
   const activeOutline = activeSection ? null : outlineDocs.outlines.find((o) => o.id === activeOutlineId) ?? null;
 
@@ -755,7 +758,14 @@ const [activeEvent, setActiveEvent] = useState<TimelineEvent | null>(null);
   const event = camelize<TimelineEvent>(await res.json());
   setTimelineEvents((prev) => [...prev, event]);
   setActiveEvent(event);
+  setTimelineDraft(null);
 };
+
+  // Names an imported timeline's events are linked to.
+  const storyBibleNames = {
+    characters: characters.map((c) => ({ name: c.name, nickname: c.nickname })),
+    locations: worldEntries.filter((w) => /location|place|setting/i.test(w.category ?? "")).map((w) => w.title),
+  };
 
 const saveTimelineEvent = async (event: TimelineEvent) => {
   setSaving(true);
@@ -1362,6 +1372,53 @@ const deleteTimelineEvent = async (eventId: string) => {
                   </span>
                 </button>
               ))}
+            {/* Timeline import */}
+            {activeTab === "timeline" && (
+              <TimelineImportButton
+                names={storyBibleNames}
+                onParsed={(draft) => { setActiveEvent(null); setTimelineDraft(draft); }}
+              />
+            )}
+
+          {/* Timeline list */}
+{activeTab === "timeline" && timelineEvents.map((event) => (
+  <button
+    key={event.id}
+    onClick={() => { setActiveEvent(event); setTimelineDraft(null); }}
+    style={{
+      width: "100%", display: "flex", alignItems: "flex-start", gap: "10px",
+      padding: "10px 16px",
+      background: activeEvent?.id === event.id ? "var(--gold-subtle)" : "transparent",
+      border: "none",
+      borderLeft: activeEvent?.id === event.id ? "2px solid var(--gold-primary)" : "2px solid transparent",
+      cursor: "pointer", transition: "all 0.15s", textAlign: "left",
+    }}
+    onMouseEnter={(e) => {
+      if (activeEvent?.id !== event.id)
+        (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
+    }}
+    onMouseLeave={(e) => {
+      if (activeEvent?.id !== event.id)
+        (e.currentTarget as HTMLElement).style.background = "transparent";
+    }}>
+    {/* When, then what: labels like "Night 0, early October" are too long to sit beside the title. */}
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {event.timeLabel && (
+        <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, color: "var(--gold-primary)", margin: "0 0 1px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {event.timeLabel}
+        </p>
+      )}
+      <p style={{ fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {event.title}
+      </p>
+      {event.location && (
+        <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", margin: 0 }}>
+          {event.location}
+        </p>
+      )}
+    </div>
+  </button>
+))}
           </div>
         </div>
 
@@ -2199,48 +2256,6 @@ const deleteTimelineEvent = async (eventId: string) => {
               </Section>
             </div>
           )}
-          {/* Timeline list */}
-{activeTab === "timeline" && timelineEvents.map((event, i) => (
-  <button
-    key={event.id}
-    onClick={() => setActiveEvent(event)}
-    style={{
-      width: "100%", display: "flex", alignItems: "flex-start", gap: "10px",
-      padding: "10px 16px",
-      background: activeEvent?.id === event.id ? "var(--gold-subtle)" : "transparent",
-      border: "none",
-      borderLeft: activeEvent?.id === event.id ? "2px solid var(--gold-primary)" : "2px solid transparent",
-      cursor: "pointer", transition: "all 0.15s", textAlign: "left",
-    }}
-    onMouseEnter={(e) => {
-      if (activeEvent?.id !== event.id)
-        (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
-    }}
-    onMouseLeave={(e) => {
-      if (activeEvent?.id !== event.id)
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-    }}>
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", flexShrink: 0 }}>
-      <span style={{ fontSize: "10px", fontFamily: "var(--font-inter)", fontWeight: 600, color: "var(--gold-primary)", whiteSpace: "nowrap" }}>
-        {event.timeLabel}
-      </span>
-      {i < timelineEvents.length - 1 && (
-        <div style={{ width: "1px", height: "16px", background: "var(--border-color)" }} />
-      )}
-    </div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <p style={{ fontSize: "12px", fontFamily: "var(--font-inter)", fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {event.title}
-      </p>
-      {event.location && (
-        <p style={{ fontSize: "10px", fontFamily: "var(--font-inter)", color: "var(--text-dim)", margin: 0 }}>
-          {event.location}
-        </p>
-      )}
-    </div>
-  </button>
-))}
-
           {/* Notes detail */}
           {activeTab === "notes" && activeNote && (
             <div style={detailPadding}>
@@ -2299,6 +2314,23 @@ const deleteTimelineEvent = async (eventId: string) => {
             </div>
           )}
           
+          {/* Timeline import review */}
+          {activeTab === "timeline" && timelineDraft && !activeEvent && bible && (
+            <TimelineImportPreview
+              key={timelineDraft.fileName + timelineDraft.events.length}
+              draft={timelineDraft}
+              bibleId={bible.id}
+              existingCount={timelineEvents.length}
+              onCancel={() => setTimelineDraft(null)}
+              onImported={(rows, replaced) => {
+                const added = rows.map((r) => camelize<TimelineEvent>(r));
+                setTimelineEvents((prev) => (replaced ? added : [...prev, ...added]));
+                setTimelineDraft(null);
+                setActiveEvent(added[0] ?? null);
+              }}
+            />
+          )}
+
           {/* Timeline detail */}
 {activeTab === "timeline" && activeEvent && (
   <div style={detailPadding}>
@@ -2409,7 +2441,7 @@ const deleteTimelineEvent = async (eventId: string) => {
 )}
 
 {/* Timeline empty state */}
-{activeTab === "timeline" && !activeEvent && (
+{activeTab === "timeline" && !activeEvent && !timelineDraft && (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "3rem" }}>
     <Clock style={{ width: "40px", height: "40px", color: "var(--gold-primary)", opacity: 0.3, marginBottom: "1rem" }} />
     <h3 style={{ fontFamily: "var(--font-dm-sans)", fontWeight: 700, fontSize: "1.1rem", color: "var(--text-primary)", marginBottom: "8px" }}>

@@ -59,8 +59,12 @@ export interface ConvertedOutline {
   warnings: string[];
 }
 
-/** Convert a .docx outline in the browser, keeping its headings, lists and tables. */
-export async function convertOutlineDocx(file: File): Promise<ConvertedOutline> {
+/**
+ * A Word document as HTML, without images. A paragraph in Word's "Title"
+ * style is taken out and returned as `title`. Browser only; throws an Error
+ * with a message to show.
+ */
+export async function readDocxHtml(file: File): Promise<{ html: string; title: string; images: number }> {
   const name = file.name.toLowerCase();
   if (name.endsWith(".doc") || file.type === "application/msword") {
     throw new Error("Older .doc files can't be uploaded. Open the file in Word, Pages or Google Docs, save it as .docx, and try again.");
@@ -73,7 +77,7 @@ export async function convertOutlineDocx(file: File): Promise<ConvertedOutline> 
   const result = await mammoth.convertToHtml(
     { arrayBuffer: await file.arrayBuffer() },
     {
-      styleMap: ["p[style-name='Title'] => h1.outline-title:fresh"],
+      styleMap: ["p[style-name='Title'] => h1.doc-title:fresh"],
       // Images aren't kept (yet); don't spend time encoding them.
       convertImage: mammoth.images.imgElement(async () => {
         images++;
@@ -83,18 +87,22 @@ export async function convertOutlineDocx(file: File): Promise<ConvertedOutline> 
   );
 
   let html = result.value.replace(/<img\b[^>]*>/gi, "");
-  // A paragraph styled "Title" names the outline.
   let title = "";
-  html = html.replace(/<h1 class="outline-title">([\s\S]*?)<\/h1>/i, (_, inner: string) => {
+  html = html.replace(/<h1 class="doc-title">([\s\S]*?)<\/h1>/i, (_, inner: string) => {
     title = outlineText(inner);
     return "";
   });
   // Empty paragraphs Word uses for spacing.
   html = html.replace(/<p>(\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, "");
+  if (!outlineText(html)) throw new Error("That document looks empty.");
+  return { html, title, images };
+}
 
-  const text = outlineText(html);
-  if (!text) throw new Error("That document looks empty.");
+/** Convert a .docx outline in the browser, keeping its headings, lists and tables. */
+export async function convertOutlineDocx(file: File): Promise<ConvertedOutline> {
+  const { html, title, images } = await readDocxHtml(file);
   if (html.length > MAX_OUTLINE_HTML_CHARS) throw new Error("That outline is too long to upload.");
+  const text = outlineText(html);
 
   const warnings: string[] = [];
   if (images) warnings.push(`${images} image${images === 1 ? " was" : "s were"} left out; images in outlines aren't supported yet.`);
